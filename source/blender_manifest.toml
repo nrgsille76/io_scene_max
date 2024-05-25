@@ -1,0 +1,17 @@
+schema_version = "1.0.0"
+id = "io_scene_max"
+name = "Import Autodesk MAX (.max)"
+version = "1.2.2"
+tagline = "Import 3DSMAX meshes & materials"
+maintainer = "NRG Sille <nrgsille@gmx.de>"
+type = "add-on"
+permissions = ["files"]
+tags = ["Import-Export"]
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-2.0-or-later"]
+website = "https://projects.blender.org/blender/blender-addons-contrib/src/branch/main/io_scene_max"
+copyright = [
+	"2023-2024 Sebastian Schrand",
+	"2017-2022 Jens M. Plonka",
+	"2005-2018 Philippe Lagadec"
+]
