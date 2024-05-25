@@ -1,4 +1,4 @@
-# Autodesk 3D Studio (.3ds)
+# Autodesk MAX Importer (.max)
 
 
 ---  
