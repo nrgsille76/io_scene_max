@@ -9,7 +9,7 @@ permissions = ["files"]
 tags = ["Import-Export"]
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-2.0-or-later"]
-website = "https://projects.blender.org/blender/blender-addons-contrib/src/branch/main/io_scene_max"
+website = "https://github.com/nrgsille76/io_scene_max"
 copyright = [
 	"2023-2024 Sebastian Schrand",
 	"2017-2022 Jens M. Plonka",
