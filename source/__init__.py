@@ -4,7 +4,7 @@
 
 
 __author__ = "Sebastian Sille <nrgsille@gmail.com>"
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 __date__ = "24 Sep 2020"
 
 
@@ -66,7 +66,7 @@ class ImportMax(bpy.types.Operator, ImportHelper):
     use_apply_matrix: BoolProperty(
         name="Apply Matrix",
         description="Use matrix to transform the objects",
-        default=False,
+        default=True,
     )
 
     def draw(self, context):
