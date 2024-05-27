@@ -2,6 +2,12 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+
+__author__ = "Sebastian Sille <nrgsille@gmail.com>"
+__version__ = "1.2.3"
+__date__ = "24 Sep 2020"
+
+
 import bpy
 from bpy_extras.io_utils import (
     ImportHelper,
@@ -11,6 +17,7 @@ from bpy_extras.io_utils import (
 )
 from bpy.props import (
     BoolProperty,
+    EnumProperty,
     FloatProperty,
     StringProperty,
     CollectionProperty,
@@ -41,20 +48,20 @@ class ImportMax(bpy.types.Operator, ImportHelper):
         soft_min=0.0, soft_max=10000.0,
         default=1.0,
     )
-    use_material: BoolProperty(
-        name="Materials",
-        description="Import the materials of the objects",
-        default=True,
-    )
-    use_uv_mesh: BoolProperty(
-        name="UV Mesh",
-        description="Import texture coordinates as mesh objects",
-        default=False,
-    )
     use_collection: BoolProperty(
         name="Collection",
         description="Create a new collection",
         default=False,
+    )
+    object_filter: EnumProperty(
+        name="Object Filter", options={'ENUM_FLAG'},
+        items=(('MATERIAL', "Material".rjust(12), "", 'MATERIAL_DATA', 0x1),
+               ('UV', "UV Maps".rjust(11), "", 'UV_DATA', 0x2),
+               ('EMPTY', "Empty".rjust(11), "", 'EMPTY_AXIS', 0x4),
+               ('ARMATURE', "Armature".rjust(11), "", 'ARMATURE_DATA', 0x8),
+               ),
+        description="Object types to import",
+        default={'MATERIAL', 'UV', 'EMPTY', 'ARMATURE'},
     )
     use_apply_matrix: BoolProperty(
         name="Apply Matrix",
@@ -87,14 +94,9 @@ def import_include(layout, operator):
     header.label(text="Include")
     if body:
         layrow = layout.row(align=True)
-        layrow.prop(operator, "use_material")
-        layrow.label(text="", icon='MATERIAL' if operator.use_material else 'SHADING_TEXTURE')
-        layrow = layout.row(align=True)
-        layrow.prop(operator, "use_uv_mesh")
-        layrow.label(text="", icon='UV' if operator.use_uv_mesh else 'GROUP_UVS')
-        layrow = layout.row(align=True)
         layrow.prop(operator, "use_collection")
         layrow.label(text="", icon='OUTLINER_COLLECTION' if operator.use_collection else 'GROUP')
+        layout.column().prop(operator, "object_filter")
 
 
 def import_transform(layout, operator):
