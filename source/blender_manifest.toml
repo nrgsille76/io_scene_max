@@ -1,12 +1,12 @@
 schema_version = "1.0.0"
 id = "io_scene_max"
 name = "Import Autodesk MAX (.max)"
-version = "1.2.4"
+version = "1.2.5"
 tagline = "Import 3DSMAX meshes & materials"
 maintainer = "NRG Sille <nrgsille@gmx.de>"
 type = "add-on"
 permissions = ["files"]
-tags = ["Import-Export"]
+tags = ["Import-Export", "Mesh", "Material"]
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-2.0-or-later"]
 website = "https://github.com/nrgsille76/io_scene_max"
