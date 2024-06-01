@@ -4,8 +4,8 @@
 
 
 __author__ = "Sebastian Sille <nrgsille@gmail.com>"
-__version__ = "1.2.4"
-__date__ = "24 Sep 2020"
+__version__ = "1.2.5"
+__date__ = "18 Nov 2023"
 
 
 import bpy
