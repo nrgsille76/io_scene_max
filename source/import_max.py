@@ -876,99 +876,133 @@ def read_video_postqueue(maxfile, filename):
     VID_PST_QUE = read_chunks(maxfile, 'VideoPostQueue', filename + '.VidPstQue.bin')
 
 
-def get_position(pos):
-    position = mathutils.Vector()
-    if (pos):
-        uid = get_guid(pos)
-        if (uid == MATRIX_POS):  # Position XYZ
-            position = mathutils.Vector(get_point_3d(pos))
-        elif (uid == 0x2008):  # Bezier Position
-            position = mathutils.Vector(pos.get_first(0x2503).data)
-        elif (uid == 0x442312):  # TCB Position
-            position = mathutils.Vector(pos.get_first(0x2503).data)
-        elif (uid == 0x4B4B1002):  # Position List
-            refs = get_references(pos)
-            if (len(refs) >= 3):
-                return get_position(refs[0])
-    return position
+def calc_point(data):
+    points = []
+    long, offset = get_long(data, 0)
+    while (offset < len(data)):
+        val, offset = get_long(data, offset)
+        flt, offset = get_floats(data, offset, 3)
+        points.extend(flt)
+    return points
 
 
-def get_rotation(pos):
-    rotation = mathutils.Quaternion()
-    if (pos):
-        uid = get_guid(pos)
-        if (uid == 0x2012):  # Euler XYZ
-            rot = get_point_3d(pos)
-            rotation = mathutils.Euler((rot[0], rot[1], rot[2])).to_quaternion()
-        elif (uid == 0x442313):  # TCB Rotation
-            rot = pos.get_first(0x2504).data
-            rotation = mathutils.Quaternion((rot[0], rot[1], rot[2], rot[3]))
-        elif (uid == MATRIX_ROT):  # Rotation Wire
-            return get_rotation(get_references(pos)[0])
-        elif (uid == 0x4B4B1003):  # Rotation List
-            refs = get_references(pos)
-            if (len(refs) > 3):
-                return get_rotation(refs[0])
-    return rotation
+def calc_point_float(data):
+    points = []
+    long, offset = get_long(data, 0)
+    while (offset < len(data)):
+        flt, offset = get_floats(data, offset, 3)
+        points.extend(flt)
+    return points
 
 
-def get_scale(pos):
-    scale = mathutils.Vector((1.0, 1.0, 1.0))
-    if (pos):
-        uid = get_guid(pos)
-        if (uid == MATRIX_SCL):  # ScaleXYZ
-            pos = get_point_3d(pos, 1.0)
-        elif (uid == 0x2010):  # Bezier Scale
-            scl = pos.get_first(0x2501)
-            if (scl is None):
-                scl = pos.get_first(0x2505)
-            pos = scl.data
-        elif (uid == 0x442315):  # TCB Zoom
-            scl = pos.get_first(0x2501)
-            if (scl is None):
-                scl = pos.get_first(0x2505)
-            pos = scl.data
-        elif (uid == 0x4B4B1002):  # Scale List
-            refs = get_references(pos)
-            if (len(refs) >= 3):
-                return get_scale(refs[0])
-        scale = mathutils.Vector(pos[:3])
-    return scale
+def calc_point_3d(chunk):
+    data = chunk.data
+    count, offset = get_long(data, 0)
+    pointlist = []
+    try:
+        while (offset < len(data)):
+            pt = Point3d()
+            long, offset = get_long(data, offset)
+            pt.points, offset = get_longs(data, offset, long)
+            pt.flags, offset = get_short(data, offset)
+            if ((pt.flags & 0x01) != 0):
+                pt.f1, offset = get_long(data, offset)
+            if ((pt.flags & 0x08) != 0):
+                pt.fH, offset = get_short(data, offset)
+            if ((pt.flags & 0x10) != 0):
+                pt.f2, offset = get_long(data, offset)
+            if ((pt.flags & 0x20) != 0):
+                pt.fA, offset = get_longs(data, offset, 2 * (long - 3))
+            if (len(pt.points) > 0):
+                pointlist.append(pt)
+    except Exception as exc:
+        print('ArrayError:\n', "%s: offset = %d\n" % (exc, offset))
+    return pointlist
 
 
-def create_matrix(prc):
-    uid = get_guid(prc)
-    mtx = mathutils.Matrix.Identity(4)
-    if (uid == 0x2005):  # Position/Rotation/Scale
-        pos = get_position(get_references(prc)[0])
-        rot = get_rotation(get_references(prc)[1])
-        scl = get_scale(get_references(prc)[2])
-        mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
-    elif (uid == 0x9154):  # BipSlave Control
-        biped = get_references(prc)[-1]
-        if (get_cls_name(biped) == "'Biped SubAnim '"):
-            ref = get_references(biped)
-            scl = get_scale(get_references(ref[1])[0])
-            rot = get_rotation(get_references(ref[2])[0])
-            pos = get_position(get_references(ref[3])[0])
-            mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
-    return mtx
-
-
-def get_matrix_mesh_material(node):
-    refs = get_reference(node)
-    if (refs):
-        prs = refs.get(0, None)
-        msh = refs.get(1, None)
-        mat = refs.get(3, None)
-        lyr = refs.get(6, None)
+def get_point(floatval, default=0.0):
+    uid = get_guid(floatval)
+    if (uid == 0x2007):  # Bezier-Float
+        flv = floatval.get_first(0x7127)
+        if (flv):
+            try:
+                return flv.get_first(0x2501).data[0]
+            except:
+                print("SyntaxError: %s - assuming 0.0!\n" % (floatval))
+        return default
+    if (uid == FLOAT_POINT):  # Float Wire
+        flv = get_references(floatval)[0]
+        return get_point(flv)
     else:
-        refs = get_references(node)
-        prs = refs[0]
-        msh = refs[1]
-        mat = refs[3]
-        lyr = refs[6] if len(refs) > 6 else None
-    return prs, msh, mat, lyr
+        return default
+
+
+def get_point_3d(chunk, default=0.0):
+    floats = []
+    if (chunk):
+        refs = get_references(chunk)
+        for fl in refs:
+            flt = get_point(fl, default)
+            if (fl is not None):
+                floats.append(flt)
+    return floats
+
+
+def get_point_array(values):
+    verts = []
+    if len(values) >= 4:
+        count, offset = get_long(values, 0)
+        while (count > 0):
+            floats, offset = get_floats(values, offset, 3)
+            verts.extend(floats)
+            count -= 1
+    return verts
+
+
+def get_poly_4p(points):
+    vertex = {}
+    for point in points:
+        ngon = point.points
+        key = point.fH
+        if (key not in vertex):
+            vertex[key] = []
+        vertex[key].append(ngon)
+    return vertex
+
+
+def get_poly_5p(data):
+    count, offset = get_long(data, 0)
+    ngons = []
+    while count > 0:
+        pt, offset = get_longs(data, offset, 3)
+        offset += 8
+        ngons.append(pt)
+        count -= 1
+    return ngons
+
+
+def get_poly_6p(data):
+    count, offset = get_long(data, 0)
+    polylist = []
+    while (offset < len(data)):
+        long, offset = get_longs(data, offset, 6)
+        i = 5
+        while ((i > 3) and (long[i] < 0)):
+            i -= 1
+            if (i > 2):
+                polylist.append(long[1:i])
+    return polylist
+
+
+def get_poly_data(chunk):
+    offset = 0
+    polylist = []
+    data = chunk.data
+    while (offset < len(data)):
+        count, offset = get_long(data, offset)
+        points, offset = get_longs(data, offset, count)
+        polylist.append(points)
+    return polylist
 
 
 def get_property(properties, idx):
@@ -1098,6 +1132,111 @@ def adjust_material(obj, mat):
             matShader.ior = material.get('refraction', 1.45)
 
 
+def get_bezier_floats(pos):
+    refs = get_references(pos)
+    floats = get_point_3d(pos)
+    if any(rf.get_first(0x2501) for rf in refs):
+        floats.clear()
+        for ref in refs:
+            floats.append(ref.get_first(0x2501).data[0])
+    return floats
+
+
+def get_position(pos):
+    position = mathutils.Vector()
+    if (pos):
+        uid = get_guid(pos)
+        if (uid == MATRIX_POS):  # Position XYZ
+            position = mathutils.Vector(get_bezier_floats(pos))
+        elif (uid == 0x2008):  # Bezier Position
+            position = mathutils.Vector(pos.get_first(0x2503).data)
+        elif (uid == 0x442312):  # TCB Position
+            position = mathutils.Vector(pos.get_first(0x2503).data)
+        elif (uid == 0x4B4B1002):  # Position List
+            refs = get_references(pos)
+            if (len(refs) >= 3):
+                return get_position(refs[0])
+    return position
+
+
+def get_rotation(pos):
+    rotation = mathutils.Quaternion()
+    if (pos):
+        uid = get_guid(pos)
+        if (uid == 0x2012):  # Euler XYZ
+            rot = get_bezier_floats(pos)
+            rotation = mathutils.Euler((rot[0], rot[1], rot[2])).to_quaternion()
+        elif (uid == 0x442313):  # TCB Rotation
+            rot = pos.get_first(0x2504).data
+            rotation = mathutils.Quaternion((rot[0], rot[1], rot[2], rot[3]))
+        elif (uid == MATRIX_ROT):  # Rotation Wire
+            return get_rotation(get_references(pos)[0])
+        elif (uid == 0x4B4B1003):  # Rotation List
+            refs = get_references(pos)
+            if (len(refs) > 3):
+                return get_rotation(refs[0])
+    return rotation
+
+
+def get_scale(pos):
+    scale = mathutils.Vector((1.0, 1.0, 1.0))
+    if (pos):
+        uid = get_guid(pos)
+        if (uid == MATRIX_SCL):  # ScaleXYZ
+            pos = get_bezier_floats(pos[:3])
+        elif (uid == 0x2010):  # Bezier Scale
+            scl = pos.get_first(0x2501)
+            if (scl is None):
+                scl = pos.get_first(0x2505)
+            pos = scl.data
+        elif (uid == 0x442315):  # TCB Zoom
+            scl = pos.get_first(0x2501)
+            if (scl is None):
+                scl = pos.get_first(0x2505)
+            pos = scl.data
+        elif (uid == 0x4B4B1002):  # Scale List
+            refs = get_references(pos)
+            if (len(refs) >= 3):
+                return get_scale(refs[0])
+        scale = mathutils.Vector(pos[:3])
+    return scale
+
+
+def create_matrix(prc):
+    uid = get_guid(prc)
+    mtx = mathutils.Matrix.Identity(4)
+    if (uid == 0x2005):  # Position/Rotation/Scale
+        pos = get_position(get_references(prc)[0])
+        rot = get_rotation(get_references(prc)[1])
+        scl = get_scale(get_references(prc)[2])
+        mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
+    elif (uid == 0x9154):  # BipSlave Control
+        biped = get_references(prc)[-1]
+        if (get_cls_name(biped) == "'Biped SubAnim '"):
+            ref = get_references(biped)
+            scl = get_scale(get_references(ref[1])[0])
+            rot = get_rotation(get_references(ref[2])[0])
+            pos = get_position(get_references(ref[3])[0])
+            mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
+    return mtx
+
+
+def get_matrix_mesh_material(node):
+    refs = get_reference(node)
+    if (refs):
+        prs = refs.get(0, None)
+        msh = refs.get(1, None)
+        mat = refs.get(3, None)
+        lyr = refs.get(6, None)
+    else:
+        refs = get_references(node)
+        prs = refs[0]
+        msh = refs[1]
+        mat = refs[3]
+        lyr = refs[6] if len(refs) > 6 else None
+    return prs, msh, mat, lyr
+
+
 def adjust_matrix(obj, node):
     mtx = create_matrix(node).flatten()
     plc = mathutils.Matrix(*mtx)
@@ -1144,135 +1283,6 @@ def create_shape(context, node, key, pts, indices, uvdata, mat, obtypes):
         adjust_material(obj, mat)
     object_list.append(obj)
     return object_list
-
-
-def calc_point(data):
-    points = []
-    long, offset = get_long(data, 0)
-    while (offset < len(data)):
-        val, offset = get_long(data, offset)
-        flt, offset = get_floats(data, offset, 3)
-        points.extend(flt)
-    return points
-
-
-def calc_point_float(data):
-    points = []
-    long, offset = get_long(data, 0)
-    while (offset < len(data)):
-        flt, offset = get_floats(data, offset, 3)
-        points.extend(flt)
-    return points
-
-
-def calc_point_3d(chunk):
-    data = chunk.data
-    count, offset = get_long(data, 0)
-    pointlist = []
-    try:
-        while (offset < len(data)):
-            pt = Point3d()
-            long, offset = get_long(data, offset)
-            pt.points, offset = get_longs(data, offset, long)
-            pt.flags, offset = get_short(data, offset)
-            if ((pt.flags & 0x01) != 0):
-                pt.f1, offset = get_long(data, offset)
-            if ((pt.flags & 0x08) != 0):
-                pt.fH, offset = get_short(data, offset)
-            if ((pt.flags & 0x10) != 0):
-                pt.f2, offset = get_long(data, offset)
-            if ((pt.flags & 0x20) != 0):
-                pt.fA, offset = get_longs(data, offset, 2 * (long - 3))
-            if (len(pt.points) > 0):
-                pointlist.append(pt)
-    except Exception as exc:
-        print('ArrayError:\n', "%s: offset = %d\n" % (exc, offset))
-    return pointlist
-
-
-def get_point(floatval, default=0.0):
-    uid = get_guid(floatval)
-    if (uid == 0x2007):  # Bezier-Float
-        flv = floatval.get_first(0x7127)
-        if (flv):
-            try:
-                return flv.get_first(0x2501).data[0]
-            except:
-                print("SyntaxError: %s - assuming 0.0!\n" % (floatval))
-        return default
-    if (uid == FLOAT_POINT):  # Float Wire
-        flv = get_references(floatval)[0]
-        return get_point(flv)
-    else:
-        return default
-
-
-def get_point_3d(chunk, default=0.0):
-    floats = []
-    if (chunk):
-        refs = get_references(chunk)
-        for fl in refs:
-            flt = get_point(fl, default)
-            if (fl is not None):
-                floats.append(flt)
-    return floats
-
-
-def get_point_array(values):
-    verts = []
-    if len(values) >= 4:
-        count, offset = get_long(values, 0)
-        while (count > 0):
-            floats, offset = get_floats(values, offset, 3)
-            verts.extend(floats)
-            count -= 1
-    return verts
-
-
-def get_poly_4p(points):
-    vertex = {}
-    for point in points:
-        ngon = point.points
-        key = point.fH
-        if (key not in vertex):
-            vertex[key] = []
-        vertex[key].append(ngon)
-    return vertex
-
-
-def get_poly_5p(data):
-    count, offset = get_long(data, 0)
-    ngons = []
-    while count > 0:
-        pt, offset = get_longs(data, offset, 3)
-        offset += 8
-        ngons.append(pt)
-        count -= 1
-    return ngons
-
-
-def get_poly_6p(data):
-    count, offset = get_long(data, 0)
-    polylist = []
-    while (offset < len(data)):
-        long, offset = get_longs(data, offset, 6)
-        i = 5
-        while ((i > 3) and (long[i] < 0)):
-            i -= 1
-            if (i > 2):
-                polylist.append(long[1:i])
-    return polylist
-
-
-def get_poly_data(chunk):
-    offset = 0
-    polylist = []
-    data = chunk.data
-    while (offset < len(data)):
-        count, offset = get_long(data, offset)
-        points, offset = get_longs(data, offset, count)
-        polylist.append(points)
-    return polylist
 
 
 def create_dummy_object(context, node, uid):
