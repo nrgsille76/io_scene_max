@@ -1406,7 +1406,7 @@ def create_object(context, node, obtypes):
     for obj in created:
         if obj.name != nodename:
             parent_dict[obj.name] = parentname
-        if nodepivot is not None:
+        if nodepivot and obj.type == 'MESH':
             pivot = mathutils.Vector(nodepivot.data)
             p_mtx = mathutils.Matrix.Translation(pivot)
             obj.data.transform(p_mtx)
