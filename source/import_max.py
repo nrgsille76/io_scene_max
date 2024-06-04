@@ -591,7 +591,7 @@ class ByteArrayChunk(MaxChunk):
             self.set_string(data)
         elif (self.types in [0x2034, 0x2035]):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
-        elif (self.types in [0x2501, 0x2503, 0x2504, 0x2505, 0x2511]):
+        elif (self.types in [0x2501, 0x2503, 0x2504, 0x2505, 0x2511, 0x96A]):
             self.set(data, '<' + 'f' * int(len(data) / 4), 0, len(data))
         elif (self.types == 0x2510):
             self.set(data, '<' + 'f' * int(len(data) / 4 - 1) + 'I', 0, len(data))
@@ -1361,7 +1361,7 @@ def create_shell(context, node, shell, mat, obtypes):
     created = []
     if refs:
         msh = refs[-1]
-        if (get_cls_name(msh) == "'Editable Poly'"):
+        if (get_guid(msh) == EDIT_POLY):
             created += create_editable_poly(context, node, msh, mat, obtypes)
         else:
             created += create_editable_mesh(context, node, msh, mat, obtypes)
@@ -1400,15 +1400,20 @@ def create_object(context, node, obtypes):
     parent = get_node_parent(node)
     nodename = get_node_name(node)
     node.parent = parent
+    nodepivot = node.get_first(0x96A)
     parentname = get_node_name(parent)
     prs, msh, mat, lyr = get_matrix_mesh_material(node)
     created, uid = create_mesh(context, node, msh, mat, obtypes)
+    created = [idx for ob, idx in enumerate(created) if idx not in created[:ob]]
     for obj in created:
         if obj.name != nodename:
             parent_dict[obj.name] = parentname
+        if nodepivot is not None:
+            pivot = mathutils.Vector(nodepivot.data)
+            p_mtx = mathutils.Matrix.Translation(pivot)
+            obj.data.transform(p_mtx)
     matrix_dict[nodename] = create_matrix(prs)
     parent_dict[nodename] = parentname
-
     return nodename, created
 
 
@@ -1434,7 +1439,7 @@ def make_scene(context, mscale, obtypes, transform, parent):
                     obj.parent = parents[0]
                 except TypeError as te:
                     print("\tTypeError: %s '%s'" % (te, pt_name))
-            if obj_mtx and prt_mtx:
+            if obj_mtx:
                 trans_mtx = prt_mtx @ obj_mtx
                 if transform:
                     obj.matrix_world = trans_mtx
