@@ -5,6 +5,7 @@ version = "1.2.8"
 tagline = "Import 3DSMAX meshes & materials"
 maintainer = "NRG Sille <nrgsille@gmx.de>"
 type = "add-on"
+files = "Import Autodesk MAX files"
 permissions = ["files"]
 tags = ["Import-Export", "Mesh", "Material"]
 blender_version_min = "4.2.0"
