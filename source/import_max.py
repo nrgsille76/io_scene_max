@@ -1378,7 +1378,6 @@ def create_mesh(context, node, msh, mat, obtypes):
     created = []
     object_list.clear()
     uid = get_guid(msh)
-    msh.geometry = None
     if (uid == EDIT_MESH):
         created = create_editable_mesh(context, node, msh, mat, obtypes)
     elif (uid == EDIT_POLY):
@@ -1399,9 +1398,8 @@ def create_mesh(context, node, msh, mat, obtypes):
 def create_object(context, node, obtypes):
     parent = get_node_parent(node)
     nodename = get_node_name(node)
-    node.parent = parent
-    nodepivot = node.get_first(0x96A)
     parentname = get_node_name(parent)
+    nodepivot = node.get_first(0x96A)
     prs, msh, mat, lyr = get_matrix_mesh_material(node)
     created, uid = create_mesh(context, node, msh, mat, obtypes)
     created = [idx for ob, idx in enumerate(created) if idx not in created[:ob]]
