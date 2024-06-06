@@ -1005,6 +1005,20 @@ def get_poly_data(chunk):
     return polylist
 
 
+def get_uvw_coords(chunk):
+    offset = 0
+    vindex = []
+    data = chunk.data
+    while (offset < len(data)):
+        idx, offset = get_long(data, offset)
+        vindex.append(idx)
+    cnt = vindex.pop(0)
+    vtx = iter(vindex)
+    facelist = list((v, next(vtx), next(vtx)) for v in vtx)
+    vindex.clear()
+    return facelist
+
+
 def get_property(properties, idx):
     for child in properties.children:
         if (child.types & 0x100E):
@@ -1347,11 +1361,22 @@ def create_editable_mesh(context, node, msh, mat, obtypes):
     key = uvdata = None
     poly = msh.get_first(0x08FE)
     created = []
+    uvmap = []  # UVW maps
+    coord = []  # UVW coords
+    uvwid = []  # UVW indices
     if (poly):
         vertex_chunk = poly.get_first(0x0914)
         clsid_chunk = poly.get_first(0x0912)
+        uvmap_chunk = poly.get_first(0x2398)
+        coord_chunk = poly.get_first(0x2394)
+        uvwid_chunk = poly.get_first(0x2396)
         points = get_point_array(vertex_chunk.data)
         ngons = get_poly_5p(clsid_chunk.data)
+        if uvmap_chunk and (len(coord_chunk.data) == len(vertex_chunk.data)):
+            uvmap.append(get_long(uvmap_chunk.data, 0)[0])
+            coord += get_point_array(coord_chunk.data)
+            uvwid += get_uvw_coords(uvwid_chunk)
+            uvdata = uvmap, coord, uvwid
         created += create_shape(context, node, key, points, ngons, uvdata, mat, obtypes)
     return created
 
