@@ -1372,7 +1372,7 @@ def create_editable_mesh(context, node, msh, mat, obtypes):
         uvwid_chunk = poly.get_first(0x2396)
         points = get_point_array(vertex_chunk.data)
         ngons = get_poly_5p(clsid_chunk.data)
-        if uvmap_chunk and (len(coord_chunk.data) == len(vertex_chunk.data)):
+        if (uvmap_chunk and 'UV' in obtypes) and (len(coord_chunk.data) == len(vertex_chunk.data)):
             uvmap.append(get_long(uvmap_chunk.data, 0)[0])
             coord += get_point_array(coord_chunk.data)
             uvwid += get_uvw_coords(uvwid_chunk)
