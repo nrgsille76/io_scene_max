@@ -1412,15 +1412,15 @@ def create_editable_mesh(context, filename, node, msh, mat, obtypes, search):
     return created
 
 
-def create_shell(context, node, shell, mat, obtypes, search):
+def create_shell(context, filename, node, shell, mat, obtypes, search):
     refs = get_references(shell)
     created = []
     if refs:
         msh = refs[-1]
         if (get_guid(msh) == EDIT_POLY):
-            created += create_editable_poly(context, node, msh, mat, obtypes, search)
+            created += create_editable_poly(context, filename, node, msh, mat, obtypes, search)
         else:
-            created += create_editable_mesh(context, node, msh, mat, obtypes, search)
+            created += create_editable_mesh(context, filename, node, msh, mat, obtypes, search)
     return created
 
 
