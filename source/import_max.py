@@ -24,6 +24,7 @@ import array
 import struct
 import mathutils
 
+from bpy_extras.image_utils import load_image
 from bpy_extras.node_shader_utils import PrincipledBSDFWrapper
 
 
@@ -574,6 +575,9 @@ class ByteArrayChunk(MaxChunk):
     def __init__(self, types, data, level, number):
         MaxChunk.__init__(self, types, data, level, number)
 
+    def get_first(self.types):
+        return None
+
     def set(self, data, fmt, start, end):
         try:
             self.data = struct.unpack(fmt, data[start:end])
@@ -588,16 +592,18 @@ class ByteArrayChunk(MaxChunk):
             self.data = data
 
     def set_data(self, data):
-        if (self.types in [0x0340, 0x4001, 0x0456, 0x0962]):
+        if (self.types in [0x340, 0x456, 0x0962, 0x1230, 0x4001]):
             self.set_string(data)
+        elif (self.types in [0x01020, 0x1030]):
+            self.set(data, '<I', 0, len(data))
+        elif (self.types in [0x0100, 0x2513]):
+            self.set(data, '<f', 0, len(data))
         elif (self.types in [0x2034, 0x2035]):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
         elif (self.types in [0x2501, 0x2503, 0x2504, 0x2505, 0x2511, 0x96A]):
             self.set(data, '<' + 'f' * int(len(data) / 4), 0, len(data))
         elif (self.types == 0x2510):
             self.set(data, '<' + 'f' * int(len(data) / 4 - 1) + 'I', 0, len(data))
-        elif (self.types == 0x0100):
-            self.set(data, '<f', 0, len(data))
         else:
             self.data = data
 
@@ -817,6 +823,9 @@ def get_cls_name(chunk):
 
 
 def get_references(chunk):
+    references = []
+    if chunk is None:
+        return references
     refs = chunk.get_first(0x2034)
     if (refs):
         references = [get_node(idx) for idx in refs.data]
@@ -1059,9 +1068,19 @@ def get_standard_material(refs):
     material = None
     try:
         if (len(refs) > 2):
+            texmap = refs[1]
             colors = refs[2]
-            parameters = get_references(colors)[0]
+            bitmap = get_reference(texmap).get(3)
+            if bitmap:
+                parablock = get_references(bitmap)[1]
+                for block in parablock.children:
+                    if isinstance(block, SceneChunk):
+                        texture = block.get_first(0x1230)
+                        if texture is not None:
+                            mapname = texture.data.split("\\")[-1]
             material = Material()
+            material.set('matname', mapname)
+            parameters = get_references(colors)[0]
             material.set('ambient', get_color(parameters, 0x00))
             material.set('diffuse', get_color(parameters, 0x01))
             material.set('specular', get_color(parameters, 0x02))
@@ -1114,7 +1133,8 @@ def get_arch_material(ad):
     return material
 
 
-def adjust_material(obj, mat):
+def adjust_material(filename, search, obj, mat):
+    dirname = os.path.dirname(filename)
     material = None
     if (mat is not None):
         uid = get_guid(mat)
@@ -1137,11 +1157,13 @@ def adjust_material(obj, mat):
             refs = get_references(mat)
             material = get_arch_material(refs[0])
         if (obj is not None) and (material is not None):
+            texname = material.get('matname', None)
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
+            image = load_image(texname, dirname, place_holder=False, recursive=search, check_existing=True)
             matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
             matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             matShader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
@@ -1150,6 +1172,8 @@ def adjust_material(obj, mat):
             matShader.metallic = objMaterial.metallic = material.get('metallic', 0)
             matShader.emission_color = material.get('emissive', (0, 0, 0))
             matShader.ior = material.get('refraction', 1.45)
+            if image is not None:
+                matShader.base_color_texture.image = image
 
 
 def get_bezier_floats(pos):
@@ -1203,7 +1227,7 @@ def get_scale(pos):
     if (pos):
         uid = get_guid(pos)
         if (uid == MATRIX_SCL):  # ScaleXYZ
-            pos = get_bezier_floats(pos[:3])
+            pos = get_bezier_floats(pos)
         elif (uid == 0x2010):  # Bezier Scale
             scl = pos.get_first(0x2501)
             if (scl is None):
@@ -1264,7 +1288,7 @@ def adjust_matrix(obj, node):
     return plc
 
 
-def create_shape(context, node, key, pts, indices, uvdata, mat, obtypes):
+def create_shape(context, filename, node, key, pts, indices, uvdata, mat, obtypes, search):
     name = node.get_first(TYP_NAME).data
     shape = bpy.data.meshes.new(name)
     if (key is not None):
@@ -1300,7 +1324,7 @@ def create_shape(context, node, key, pts, indices, uvdata, mat, obtypes):
     obj = bpy.data.objects.new(name, shape)
     context.view_layer.active_layer_collection.collection.objects.link(obj)
     if ('MATERIAL' in obtypes):
-        adjust_material(obj, mat)
+        adjust_material(filename, search, obj, mat)
     object_list.append(obj)
     return object_list
 
@@ -1312,7 +1336,7 @@ def create_dummy_object(context, node, uid):
     return dummy
 
 
-def create_editable_poly(context, node, msh, mat, obtypes):
+def create_editable_poly(context, filename, node, msh, mat, obtypes, search):
     point3i = point4i = point6i = pointNi = None
     point = key = uvdata = None
     poly = msh.get_first(0x08FE)
@@ -1323,7 +1347,8 @@ def create_editable_poly(context, node, msh, mat, obtypes):
     if (poly):
         for child in poly.children:
             if isinstance(child.data, tuple):
-                created = create_shape(context, node, key, coord, uvwid, uvdata, mat, obtypes)
+                created = create_shape(context, filename, node, key, coord,
+                                       uvwid, uvdata, mat, obtypes, search)
             elif (child.types == 0x0100):
                 point = calc_point(child.data)
             elif (child.types == 0x0310):
@@ -1347,23 +1372,23 @@ def create_editable_poly(context, node, msh, mat, obtypes):
             vertex = get_poly_4p(point4i)
             if (len(vertex) > 0):
                 for key, quads in vertex.items():
-                    created += create_shape(context, node, key, point,
-                                            quads, uvdata, mat, obtypes)
+                    created += create_shape(context, filename, node, key, point,
+                                            quads, uvdata, mat, obtypes, search)
         elif (point6i is not None):
             ngons = get_poly_6p(point6i)
-            created += create_shape(context, node, key, point,
-                                    ngons, uvdata, mat, obtypes)
+            created += create_shape(context, filename, node, key, point,
+                                    ngons, uvdata, mat, obtypes, search)
         elif (pointNi is not None):
             ngons = get_poly_5p(pointNi)
-            created += create_shape(context, node, key, point,
-                                    ngons, uvdata, mat, obtypes)
+            created += create_shape(context, filename, node, key, point,
+                                    ngons, uvdata, mat, obtypes, search)
         if (point3i is not None) and 'UV' not in obtypes:
-            created += create_shape(context, node, key, point3i,
-                                    uvwid, uvdata, mat, obtypes)
+            created += create_shape(context, filename, node, key, point3i,
+                                    uvwid, uvdata, mat, obtypes, search)
     return created
 
 
-def create_editable_mesh(context, node, msh, mat, obtypes):
+def create_editable_mesh(context, filename, node, msh, mat, obtypes, search):
     key = uvdata = None
     poly = msh.get_first(0x08FE)
     created = []
@@ -1378,24 +1403,24 @@ def create_editable_mesh(context, node, msh, mat, obtypes):
         uvwid_chunk = poly.get_first(0x2396)
         points = get_point_array(vertex_chunk.data)
         ngons = get_poly_5p(clsid_chunk.data)
-        if len(coord_chunk.data) == len(vertex_chunk.data):
+        if uvmap_chunk and (len(coord_chunk.data) == len(vertex_chunk.data)):
             uvmap.append(get_long(uvmap_chunk.data, 0)[0])
             coord += get_point_array(coord_chunk.data)
             uvwid += get_uvw_coords(uvwid_chunk)
             uvdata = uvmap, coord, uvwid
-        created += create_shape(context, node, key, points, ngons, uvdata, mat, obtypes)
+        created += create_shape(context, filename, node, key, points, ngons, uvdata, mat, obtypes, search)
     return created
 
 
-def create_shell(context, node, shell, mat, obtypes):
+def create_shell(context, node, shell, mat, obtypes, search):
     refs = get_references(shell)
     created = []
     if refs:
         msh = refs[-1]
         if (get_guid(msh) == EDIT_POLY):
-            created += create_editable_poly(context, node, msh, mat, obtypes)
+            created += create_editable_poly(context, node, msh, mat, obtypes, search)
         else:
-            created += create_editable_mesh(context, node, msh, mat, obtypes)
+            created += create_editable_mesh(context, node, msh, mat, obtypes, search)
     return created
 
 
@@ -1405,16 +1430,16 @@ def create_skipable(context, node, skip):
     return []
 
 
-def create_mesh(context, node, msh, mat, obtypes):
+def create_mesh(context, filename, node, msh, mat, obtypes, search):
     created = []
     object_list.clear()
     uid = get_guid(msh)
     if (uid == EDIT_MESH):
-        created = create_editable_mesh(context, node, msh, mat, obtypes)
+        created = create_editable_mesh(context, filename, node, msh, mat, obtypes, search)
     elif (uid == EDIT_POLY):
-        created = create_editable_poly(context, node, msh, mat, obtypes)
+        created = create_editable_poly(context, filename, node, msh, mat, obtypes, search)
     elif (uid in {0x2032, 0x2033}):
-        created = create_shell(context, node, msh, mat, obtypes)
+        created = create_shell(context, filename, node, msh, mat, obtypes, search)
     elif (uid == DUMMY and 'EMPTY' in obtypes):
         created = [create_dummy_object(context, node, uid)]
     elif (uid == BIPED_OBJ and 'ARMATURE' in obtypes):
@@ -1426,13 +1451,13 @@ def create_mesh(context, node, msh, mat, obtypes):
     return created, uid
 
 
-def create_object(context, node, obtypes):
+def create_object(context, filename, node, obtypes, search):
     parent = get_node_parent(node)
     nodename = get_node_name(node)
     parentname = get_node_name(parent)
     nodepivot = node.get_first(0x96A)
     prs, msh, mat, lyr = get_matrix_mesh_material(node)
-    created, uid = create_mesh(context, node, msh, mat, obtypes)
+    created, uid = create_mesh(context, filename, node, msh, mat, obtypes, search)
     created = [idx for ob, idx in enumerate(created) if idx not in created[:ob]]
     for obj in created:
         if obj.name != nodename:
@@ -1446,12 +1471,12 @@ def create_object(context, node, obtypes):
     return nodename, created
 
 
-def make_scene(context, mscale, obtypes, transform, parent):
+def make_scene(context, filename, mscale, obtypes, search, transform, parent):
     imported = []
     for chunk in parent.children:
         if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
             try:
-                imported.append(create_object(context, chunk, obtypes))
+                imported.append(create_object(context, filename, chunk, obtypes, search))
             except Exception as exc:
                 print("\tImportError:", exc, chunk, get_node_name(chunk))
 
@@ -1475,13 +1500,13 @@ def make_scene(context, mscale, obtypes, transform, parent):
                 obj.matrix_world = mscale @ obj.matrix_world
 
 
-def read_scene(context, maxfile, filename, mscale, obtypes, transform):
+def read_scene(context, maxfile, filename, mscale, obtypes, search, transform):
     global SCENE_LIST
     SCENE_LIST = read_chunks(maxfile, 'Scene', filename + '.Scn.bin', conReader=SceneChunk)
-    make_scene(context, mscale, obtypes, transform, SCENE_LIST[0])
+    make_scene(context, filename, mscale, obtypes, search, transform, SCENE_LIST[0])
 
 
-def read(context, filename, mscale, obtypes, transform):
+def read(context, filename, mscale, obtypes, search, transform):
     if (is_maxfile(filename)):
         maxfile = ImportMaxFile(filename)
         read_class_data(maxfile, filename)
@@ -1489,13 +1514,13 @@ def read(context, filename, mscale, obtypes, transform):
         read_directory(maxfile, filename)
         read_class_directory(maxfile, filename)
         read_video_postqueue(maxfile, filename)
-        read_scene(context, maxfile, filename, mscale, obtypes, transform)
+        read_scene(context, maxfile, filename, mscale, obtypes, search, transform)
     else:
         print("File seems to be no 3D Studio Max file!")
 
 
-def load(operator, context, files=None, directory="", filepath="", scale_objects=1.0,
-         use_collection=False, object_filter=None, use_apply_matrix=True, global_matrix=None):
+def load(operator, context, files=None, directory="", filepath="", scale_objects=1.0, use_collection=False,
+         use_image_search=True, object_filter=None, use_apply_matrix=True, global_matrix=None):
 
     object_dict.clear()
     parent_dict.clear()
@@ -1515,7 +1540,7 @@ def load(operator, context, files=None, directory="", filepath="", scale_objects
             collection = bpy.data.collections.new(fl.name.split(".")[0])
             context.scene.collection.children.link(collection)
             context.view_layer.active_layer_collection = context.view_layer.layer_collection.children[collection.name]
-        read(context, os.path.join(directory, fl.name), mscale, obtypes=object_filter, transform=use_apply_matrix)
+        read(context, os.path.join(directory, fl.name), mscale, obtypes=object_filter, search=use_image_search, transform=use_apply_matrix)
 
     object_dict.clear()
     parent_dict.clear()
