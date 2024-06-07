@@ -1138,7 +1138,9 @@ def adjust_material(obj, mat):
             material = get_arch_material(refs[0])
         if (obj is not None) and (material is not None):
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
-            objMaterial = bpy.data.materials.new(matname)
+            objMaterial = bpy.data.materials.get(matname)
+            if objMaterial is None:
+                objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
             matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
             matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
