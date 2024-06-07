@@ -1144,7 +1144,7 @@ def adjust_material(filename, search, obj, mat):
             material = get_standard_material(refs)
         elif (uid == 0x0200):  # Multi/Sub-Object
             refs = get_references(mat)
-            material = adjust_material(obj, refs[-1])
+            material = adjust_material(obj, filename, search, refs[-1])
         elif (uid == VRAY_MTL):  # VRayMtl
             refs = get_reference(mat)
             mtl_id = mat.get_first(0x5431)
