@@ -575,7 +575,7 @@ class ByteArrayChunk(MaxChunk):
     def __init__(self, types, data, level, number):
         MaxChunk.__init__(self, types, data, level, number)
 
-    def get_first(self.types):
+    def get_first(self, types):
         return None
 
     def set(self, data, fmt, start, end):
