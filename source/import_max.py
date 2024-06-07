@@ -54,6 +54,7 @@ MATRIX_POS = 0xFFEE238A118F7E02  # Position XYZ
 MATRIX_ROT = 0x3A90416731381913  # Rotation Wire
 MATRIX_SCL = 0xFEEE238B118F7C01  # Scale XYZ
 BIPED_OBJ = 0x0000000000009125  # Biped Object
+BIPED_ANIM = 0x78C6B2A6B147369  # Biped SubAnim
 EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 CORO_MTL = 0x448931dd70be6506  # CoronaMtl
@@ -1013,8 +1014,7 @@ def get_uvw_coords(chunk):
         idx, offset = get_long(data, offset)
         vindex.append(idx)
     cnt = vindex.pop(0)
-    vtx = iter(vindex)
-    facelist = list((v, next(vtx), next(vtx)) for v in vtx)
+    facelist = list(zip(*[iter(vindex)]*3))
     vindex.clear()
     return facelist
 
@@ -1118,6 +1118,7 @@ def adjust_material(obj, mat):
     material = None
     if (mat is not None):
         uid = get_guid(mat)
+        mtl_id = mat.get_first(0x4000)
         if (uid == 0x0002):  # Standard
             refs = get_references(mat)
             material = get_standard_material(refs)
@@ -1126,15 +1127,18 @@ def adjust_material(obj, mat):
             material = adjust_material(obj, refs[-1])
         elif (uid == VRAY_MTL):  # VRayMtl
             refs = get_reference(mat)
+            mtl_id = mat.get_first(0x5431)
             material = get_vray_material(refs[1])
         elif (uid == CORO_MTL):  # CoronaMtl
             refs = get_references(mat)
+            mtl_id = mat.get_first(0x0FA0)
             material = get_corona_material(refs[0])
         elif (uid == ARCH_MTL):  # Arch
             refs = get_references(mat)
             material = get_arch_material(refs[0])
         if (obj is not None) and (material is not None):
-            objMaterial = bpy.data.materials.new(get_cls_name(mat))
+            matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
+            objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
             matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
             matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
@@ -1226,7 +1230,7 @@ def create_matrix(prc):
         mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
     elif (uid == 0x9154):  # BipSlave Control
         biped = get_references(prc)[-1]
-        if (get_cls_name(biped) == "'Biped SubAnim '"):
+        if biped and (get_guid(biped) == BIPED_ANIM):
             ref = get_references(biped)
             scl = get_scale(get_references(ref[1])[0])
             rot = get_rotation(get_references(ref[2])[0])
@@ -1372,7 +1376,7 @@ def create_editable_mesh(context, node, msh, mat, obtypes):
         uvwid_chunk = poly.get_first(0x2396)
         points = get_point_array(vertex_chunk.data)
         ngons = get_poly_5p(clsid_chunk.data)
-        if (uvmap_chunk and 'UV' in obtypes) and (len(coord_chunk.data) == len(vertex_chunk.data)):
+        if len(coord_chunk.data) == len(vertex_chunk.data):
             uvmap.append(get_long(uvmap_chunk.data, 0)[0])
             coord += get_point_array(coord_chunk.data)
             uvwid += get_uvw_coords(uvwid_chunk)
