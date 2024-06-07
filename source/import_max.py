@@ -23,7 +23,7 @@ import zlib
 import array
 import struct
 import mathutils
-
+from pathlib import Path
 from bpy_extras.image_utils import load_image
 from bpy_extras.node_shader_utils import PrincipledBSDFWrapper
 
@@ -1077,7 +1077,7 @@ def get_standard_material(refs):
                     if isinstance(block, SceneChunk):
                         texture = block.get_first(0x1230)
                         if texture is not None:
-                            mapname = texture.data.split("\\")[-1]
+                            mapname = Path(texture.data).name
             material = Material()
             material.set('matname', mapname)
             parameters = get_references(colors)[0]
@@ -1163,7 +1163,6 @@ def adjust_material(filename, search, obj, mat):
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
-            image = load_image(texname, dirname, place_holder=False, recursive=search, check_existing=True)
             matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
             matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             matShader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
@@ -1172,8 +1171,10 @@ def adjust_material(filename, search, obj, mat):
             matShader.metallic = objMaterial.metallic = material.get('metallic', 0)
             matShader.emission_color = material.get('emissive', (0, 0, 0))
             matShader.ior = material.get('refraction', 1.45)
-            if image is not None:
-                matShader.base_color_texture.image = image
+            if texname is not None:
+                image = load_image(texname, dirname, place_holder=False, recursive=search, check_existing=True)
+                if image is not None:
+                    matShader.base_color_texture.image = image
 
 
 def get_bezier_floats(pos):
@@ -1537,7 +1538,7 @@ def load(operator, context, files=None, directory="", filepath="", scale_objects
     default_layer = context.view_layer.active_layer_collection.collection
     for fl in files:
         if use_collection:
-            collection = bpy.data.collections.new(fl.name.split(".")[0])
+            collection = bpy.data.collections.new(Path(fl.name).stem)
             context.scene.collection.children.link(collection)
             context.view_layer.active_layer_collection = context.view_layer.layer_collection.children[collection.name]
         read(context, os.path.join(directory, fl.name), mscale, obtypes=object_filter, search=use_image_search, transform=use_apply_matrix)
