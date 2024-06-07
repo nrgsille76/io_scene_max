@@ -4,7 +4,7 @@
 
 
 __author__ = "Sebastian Sille <nrgsille@gmail.com>"
-__version__ = "1.3.3"
+__version__ = "1.3.4"
 __date__ = "18 Nov 2023"
 
 
@@ -48,10 +48,11 @@ class ImportMax(bpy.types.Operator, ImportHelper):
         soft_min=0.0, soft_max=10000.0,
         default=1.0,
     )
-    use_collection: BoolProperty(
-        name="Collection",
-        description="Create a new collection",
-        default=False,
+    use_image_search: BoolProperty(
+        name="Image Search",
+        description="Search subdirectories for any associated images "
+        "(Warning, may be slow)",
+        default=True,
     )
     object_filter: EnumProperty(
         name="Object Filter", options={'ENUM_FLAG'},
@@ -62,6 +63,11 @@ class ImportMax(bpy.types.Operator, ImportHelper):
                ),
         description="Object types to import",
         default={'MATERIAL', 'UV', 'EMPTY', 'ARMATURE'},
+    )
+    use_collection: BoolProperty(
+        name="Collection",
+        description="Create a new collection",
+        default=False,
     )
     use_apply_matrix: BoolProperty(
         name="Apply Matrix",
@@ -94,9 +100,12 @@ def import_include(layout, operator):
     header.label(text="Include")
     if body:
         layrow = layout.row(align=True)
+        layrow.prop(operator, "use_image_search")
+        layrow.label(text="", icon='OUTLINER_OB_IMAGE' if operator.use_image_search else 'IMAGE_DATA')
+        layout.column().prop(operator, "object_filter")
+        layrow = layout.row(align=True)
         layrow.prop(operator, "use_collection")
         layrow.label(text="", icon='OUTLINER_COLLECTION' if operator.use_collection else 'GROUP')
-        layout.column().prop(operator, "object_filter")
 
 
 def import_transform(layout, operator):
