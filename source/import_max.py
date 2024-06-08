@@ -1156,7 +1156,7 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             material = get_arch_material(refs[0])
         if (obj is not None) and (material is not None):
-            texname = material.get('matname', None)
+            texname = material.get('bitmap', None)
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
