@@ -1070,6 +1070,7 @@ def get_standard_material(refs):
         if (len(refs) > 2):
             texmap = refs[1]
             colors = refs[2]
+            material = Material()
             bitmap = get_reference(texmap).get(3)
             if bitmap:
                 parablock = get_references(bitmap)[1]
@@ -1077,9 +1078,7 @@ def get_standard_material(refs):
                     if isinstance(block, SceneChunk):
                         texture = block.get_first(0x1230)
                         if texture is not None:
-                            mapname = Path(texture.data).name
-            material = Material()
-            material.set('matname', mapname)
+                            material.set('bitmap', Path(texture.data).name)
             parameters = get_references(colors)[0]
             material.set('ambient', get_color(parameters, 0x00))
             material.set('diffuse', get_color(parameters, 0x01))
