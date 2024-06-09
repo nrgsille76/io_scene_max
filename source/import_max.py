@@ -574,6 +574,7 @@ class ByteArrayChunk(MaxChunk):
 
     def __init__(self, types, data, level, number):
         MaxChunk.__init__(self, types, data, level, number)
+        self.children = []
 
     def get_first(self, types):
         return None
@@ -846,7 +847,7 @@ def get_reference(chunk):
     return references
 
 
-def read_chunks(maxfile, name, filename, conReader=ContainerChunk, primReader=ByteArrayChunk):
+def read_chunks(maxfile, name, conReader=ContainerChunk, primReader=ByteArrayChunk):
     with maxfile.openstream(name) as file:
         scene = file.read()
         reader = ChunkReader(name)
@@ -855,35 +856,32 @@ def read_chunks(maxfile, name, filename, conReader=ContainerChunk, primReader=By
 
 def read_class_data(maxfile, filename):
     global CLS_DATA
-    CLS_DATA = read_chunks(maxfile, 'ClassData', filename + '.ClsDat.bin')
+    CLS_DATA = read_chunks(maxfile, 'ClassData')
 
 
 def read_class_directory(maxfile, filename):
     global CLS_DIR3_LIST
     try:
-        CLS_DIR3_LIST = read_chunks(maxfile, 'ClassDirectory3',
-                                    filename + '.ClsDir3.bin', ContainerChunk, ClassIDChunk)
+        CLS_DIR3_LIST = read_chunks(maxfile, 'ClassDirectory3', ContainerChunk, ClassIDChunk)
     except:
-        CLS_DIR3_LIST = read_chunks(maxfile, 'ClassDirectory',
-                                    filename + '.ClsDir.bin', ContainerChunk, ClassIDChunk)
+        CLS_DIR3_LIST = read_chunks(maxfile, 'ClassDirectory', ContainerChunk, ClassIDChunk)
     for clsdir in CLS_DIR3_LIST:
         clsdir.dll = get_dll(clsdir)
 
 
 def read_config(maxfile, filename):
     global CONFIG
-    CONFIG = read_chunks(maxfile, 'Config', filename + '.Cnf.bin')
+    CONFIG = read_chunks(maxfile, 'Config')
 
 
 def read_directory(maxfile, filename):
     global DLL_DIR_LIST
-    DLL_DIR_LIST = read_chunks(maxfile, 'DllDirectory',
-                               filename + '.DllDir.bin', ContainerChunk, DirectoryChunk)
+    DLL_DIR_LIST = read_chunks(maxfile, 'DllDirectory', ContainerChunk, DirectoryChunk)
 
 
 def read_video_postqueue(maxfile, filename):
     global VID_PST_QUE
-    VID_PST_QUE = read_chunks(maxfile, 'VideoPostQueue', filename + '.VidPstQue.bin')
+    VID_PST_QUE = read_chunks(maxfile, 'VideoPostQueue')
 
 
 def calc_point(data):
@@ -1075,10 +1073,9 @@ def get_standard_material(refs):
             if bitmap:
                 parablock = get_references(bitmap)[1]
                 for block in parablock.children:
-                    if isinstance(block, SceneChunk):
-                        texture = block.get_first(0x1230)
-                        if texture is not None:
-                            material.set('bitmap', Path(texture.data).name)
+                    texture = block.get_first(0x1230)
+                    if texture is not None:
+                        material.set('bitmap', Path(texture.data).name)
             parameters = get_references(colors)[0]
             material.set('ambient', get_color(parameters, 0x00))
             material.set('diffuse', get_color(parameters, 0x01))
@@ -1502,7 +1499,7 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
 
 def read_scene(context, maxfile, filename, mscale, obtypes, search, transform):
     global SCENE_LIST
-    SCENE_LIST = read_chunks(maxfile, 'Scene', filename + '.Scn.bin', conReader=SceneChunk)
+    SCENE_LIST = read_chunks(maxfile, 'Scene', conReader=SceneChunk)
     make_scene(context, filename, mscale, obtypes, search, transform, SCENE_LIST[0])
 
 
