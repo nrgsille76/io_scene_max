@@ -711,9 +711,9 @@ class ChunkReader():
             root, step = get_short(data, 0)
             long, step = get_long(data, step)
             print("  reading '%s'..." % self.name, len(data))
-            if (short == 0x8B1F):
-                short, step = get_long(data, step)
-                if (short in (0xB000000, 0xA040000)):
+            if (root == 0x8B1F):
+                head, step = get_long(data, step)
+                if (head in (0xB000000, 0xA040000)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
         while offset < len(data):
             old = offset
