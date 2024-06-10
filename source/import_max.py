@@ -584,17 +584,36 @@ class ByteArrayChunk(MaxChunk):
             self.data = struct.unpack(fmt, data[start:end])
         except Exception as exc:
             self.data = data
-            # print('StructError:', exc, name)
+            # print('\tStructError: %s' % exc)
 
     def set_string(self, data):
         try:
             self.data = data.decode('UTF-16LE')
-        except:
+        except Exception as exc:
             self.data = data
+            print('\tDecodeError: %s' % exc)
+
+    def set_path_data(self, data):
+        pathdata = []
+        data = data.split(b'\x00\x00')
+        metadata = list(zip(*[iter(data)]*6))
+        for mdata in metadata:
+            mpath = []
+            mdata = list(mdata)
+            value = mdata.pop(0)
+            meta, sect = get_longs(value, 0, len(value) // 4)
+            pathdata.append(meta)
+            for idx, path in enumerate(mdata):
+                path = path.decode('ISO-8859-1')
+                print('AssetData:', path)
+                pathdata.append(path)
+        self.data = pathdata
 
     def set_data(self, data):
         if (self.types in [0x340, 0x456, 0x0962, 0x1230, 0x4001]):
             self.set_string(data)
+        elif (self.types in (0x87DE, 0x8DB9)):
+            self.set_path_data(data)
         elif (self.types in [0x01020, 0x1030]):
             self.set(data, '<I', 0, len(data))
         elif (self.types in [0x0100, 0x2513]):
@@ -674,10 +693,9 @@ class SceneChunk(ContainerChunk):
     def set_data(self, data):
         previous = None
         following = None
-        # print('Scene', "%s\n" %(self))
+        # print('Scene', "%s" % (self))
         reader = ChunkReader()
-        self.children = reader.get_chunks(data, self.level + 1,
-                                          SceneChunk, ByteArrayChunk)
+        self.children = reader.get_chunks(data, self.level + 1, SceneChunk, ByteArrayChunk)
 
 
 class ChunkReader():
@@ -690,29 +708,30 @@ class ChunkReader():
         chunks = []
         offset = 0
         if (level == 0):
-            short, step = get_short(data, 0)
+            root, step = get_short(data, 0)
             long, step = get_long(data, step)
+            print("  reading '%s'..." % self.name, len(data))
             if (short == 0x8B1F):
                 short, step = get_long(data, step)
                 if (short in (0xB000000, 0xA040000)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
-            print("  reading '%s'..." % self.name, len(data))
         while offset < len(data):
             old = offset
-            offset, chunk = self.get_next_chunk(data, offset, level,
-                                                len(chunks), conReader, primReader)
+            offset, chunk = self.get_next_chunk(data, offset, level, len(chunks), conReader, primReader)
             chunks.append(chunk)
         return chunks
 
     def get_next_chunk(self, data, offset, level, number, conReader, primReader):
         header = 6
-        typ, siz, = struct.unpack("<Hi", data[offset:offset + header])
+        typ, siz = struct.unpack("<Hi", data[offset:offset + header])
         chunksize = siz & UNKNOWN_SIZE
         if (siz == 0):
             siz, = struct.unpack("<q", data[offset + header:offset + header + 8])
             header += 8
             chunksize = siz & MAXFILE_SIZE
-        if (siz < 0):
+        if (typ in (0x87DE, 0x8DB9)):  # FileAssetMetaData
+            chunk = primReader(typ, chunksize, level, number)
+        elif (siz < 0):
             chunk = conReader(typ, chunksize, level, number, primReader)
         else:
             chunk = primReader(typ, chunksize, level, number)
@@ -785,7 +804,7 @@ def get_node_name(node):
 
 def get_class(chunk):
     global CLS_DIR3_LIST
-    if (chunk.types < len(CLS_DIR3_LIST)):
+    if (chunk and chunk.types < len(CLS_DIR3_LIST)):
         return CLS_DIR3_LIST[chunk.types]
     return None
 
@@ -1475,7 +1494,7 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
             try:
                 imported.append(create_object(context, filename, chunk, obtypes, search))
             except Exception as exc:
-                print("\tImportError:", exc, chunk, get_node_name(chunk))
+                print("\tImportError: %s %s" % (exc, chunk))
 
     # Apply matrix and assign parents to objects
     objects = dict(imported)
@@ -1498,9 +1517,12 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
 
 
 def read_scene(context, maxfile, filename, mscale, obtypes, search, transform):
-    global SCENE_LIST
+    global SCENE_LIST, META_DATA
     SCENE_LIST = read_chunks(maxfile, 'Scene', conReader=SceneChunk)
+    META_DATA = read_chunks(maxfile, maxfile.direntries[0xB].name) if any(entry and entry.sid == 0xB for entry in maxfile.direntries) else []
     make_scene(context, filename, mscale, obtypes, search, transform, SCENE_LIST[0])
+    # For debug: Print directory
+    # print('Directory', maxfile.direntries[0].kids_dict.keys())
 
 
 def read(context, filename, mscale, obtypes, search, transform):
