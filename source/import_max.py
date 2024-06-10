@@ -811,9 +811,11 @@ def get_class(chunk):
 
 def get_dll(chunk):
     global DLL_DIR_LIST
-    idx = chunk.get_first(0x2060).data[0]
-    if (idx < len(DLL_DIR_LIST)):
-        return DLL_DIR_LIST[idx]
+    dll = chunk.get_first(0x2060)
+    if (dll):
+        idx = dll.data[0]
+        if (idx < len(DLL_DIR_LIST)):
+            return DLL_DIR_LIST[idx]
     return None
 
 
