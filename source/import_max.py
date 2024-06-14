@@ -613,7 +613,7 @@ class ByteArrayChunk(MaxChunk):
             mtyp = mkey + ' ' + title.decode('UTF-8', 'replace') + ' ' + mdir
             for idx, path in enumerate(mdata):
                 path = path.decode('UTF-8')
-                print("\tfilepath: '%s' ->  %s" % (mtyp, path))
+                print(" imgpath: '%s' ->  %s" % (mtyp, path))
         self.data = metafile
 
     def set_data(self, data):
