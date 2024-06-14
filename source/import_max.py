@@ -589,38 +589,45 @@ class ByteArrayChunk(MaxChunk):
     def set_string(self, data):
         try:
             self.data = data.decode('UTF-16LE')
-        except Exception as exc:
-            self.data = data
-            print('\tDecodeError: %s' % exc)
+        except:
+            self.data = data.decode('UTF-8', 'replace')
 
-    def set_path_data(self, data):
-        pathdata = []
+    def set_meta_data(self, data):
+        metafile = {}
         data = data.split(b'\x00\x00')
         metadata = list(zip(*[iter(data)]*6))
         for mdata in metadata:
-            mpath = []
             mdata = list(mdata)
             value = mdata.pop(0)
-            meta, sect = get_longs(value, 0, len(value) // 4)
-            pathdata.append(meta)
+            title = mdata.pop(0)
+            mbyte = mdata.pop(0)
+            mpath = mdata.pop(0)
+            drive = mdata.pop(0)
+            root = get_short(value)[0]
+            head = value.removeprefix(b'\x00')
+            meta = struct.unpack('<IQI', head[:16])
+            mkey = str(struct.unpack('>H', mbyte)[0])
+            mdir = drive.decode('UTF-8', 'replace')
+            path = mpath.decode('UTF-8').encode('UTF-32')
+            metafile[meta[1]] = path.decode('UTF-16LE', 'replace')
+            mtyp = mkey + ' ' + title.decode('UTF-8', 'replace') + ' ' + mdir
             for idx, path in enumerate(mdata):
-                path = path.decode('ISO-8859-1')
-                print('AssetData:', path)
-                pathdata.append(path)
-        self.data = pathdata
+                path = path.decode('UTF-8')
+                print("\tfilepath: '%s' ->  %s" % (mtyp, path))
+        self.data = metafile
 
     def set_data(self, data):
-        if (self.types in [0x340, 0x456, 0x0962, 0x1230, 0x4001]):
+        if (self.types in [0x110, 0x340, 0x456, 0x0962, 0x1230, 0x4001]):
             self.set_string(data)
-        elif (self.types in (0x87DE, 0x8DB9)):
+        elif (self.types in [0x87DE, 0x8DB9]):
             self.set_path_data(data)
-        elif (self.types in [0x01020, 0x1030]):
+        elif (self.types in [0x1020, 0x1030]):
             self.set(data, '<I', 0, len(data))
-        elif (self.types in [0x0100, 0x2513]):
+        elif (self.types in [0x100, 0x2513]):
             self.set(data, '<f', 0, len(data))
         elif (self.types in [0x2034, 0x2035]):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
-        elif (self.types in [0x2501, 0x2503, 0x2504, 0x2505, 0x2511, 0x96A]):
+        elif (self.types in [0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511]):
             self.set(data, '<' + 'f' * int(len(data) / 4), 0, len(data))
         elif (self.types == 0x2510):
             self.set(data, '<' + 'f' * int(len(data) / 4 - 1) + 'I', 0, len(data))
@@ -651,9 +658,7 @@ class DirectoryChunk(ByteArrayChunk):
         MaxChunk.__init__(self, types, data, level, number)
 
     def set_data(self, data):
-        if (self.types == 0x2039):
-            self.set_string(data)
-        elif (self.types == 0x2037):
+        if (self.types in (0x2037, 0x2039):
             self.set_string(data)
 
 
@@ -715,6 +720,10 @@ class ChunkReader():
                 head, step = get_long(data, step)
                 if (head in (0xB000000, 0xA040000)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
+            elif (root in (0x8DB9, 0x87DE)):
+                chunk = primReader(root, len(data), level, 1)
+                chunk.set_data(data)
+                return [chunk]
         while offset < len(data):
             old = offset
             offset, chunk = self.get_next_chunk(data, offset, level, len(chunks), conReader, primReader)
@@ -729,9 +738,7 @@ class ChunkReader():
             siz, = struct.unpack("<q", data[offset + header:offset + header + 8])
             header += 8
             chunksize = siz & MAXFILE_SIZE
-        if (typ in (0x87DE, 0x8DB9)):  # FileAssetMetaData
-            chunk = primReader(typ, chunksize, level, number)
-        elif (siz < 0):
+        if (siz < 0):
             chunk = conReader(typ, chunksize, level, number, primReader)
         else:
             chunk = primReader(typ, chunksize, level, number)
@@ -817,6 +824,14 @@ def get_dll(chunk):
         if (idx < len(DLL_DIR_LIST)):
             return DLL_DIR_LIST[idx]
     return None
+
+
+def get_metadata(index):
+    global META_DATA
+    pathdata = META_DATA[0].data
+    if pathdata is not None:
+        return pathdata.get(index)
+    return pathdata
 
 
 def get_guid(chunk):
@@ -1055,6 +1070,27 @@ def get_property(properties, idx):
     return None
 
 
+def get_bitmap(chunk, uid):
+    if (chunk):
+        pathstring = matlib = None
+        parameters = get_references(chunk)
+        if (len(parameters) >= 2):
+            params = parameters[1]
+            if (uid == 0x2):
+                path = params.get_first(0x1230)
+                if (path and path.data is not None):
+                    pathstring = path.data
+            elif (uid in (CORO_MTL, VRAY_MTL)):
+                for block in params.children:
+                    if (block.children and get_guid(block) == 0x3333):
+                        matlib = block.children[0]
+                if (matlib and matlib.data is not None):
+                    metaindex = struct.unpack('<IQI', matlib.data[:16])
+                    pathstring = get_metadata(metaindex[1])
+        return pathstring
+    return None
+
+
 def get_color(colors, idx):
     prop = get_property(colors, idx)
     if (prop is not None):
@@ -1090,14 +1126,10 @@ def get_standard_material(refs):
             texmap = refs[1]
             colors = refs[2]
             material = Material()
-            bitmap = get_reference(texmap).get(3)
-            if bitmap:
-                parablock = get_references(bitmap)[1]
-                for block in parablock.children:
-                    texture = block.get_first(0x1230)
-                    if texture is not None:
-                        material.set('bitmap', Path(texture.data).name)
             parameters = get_references(colors)[0]
+            texture = get_bitmap(get_reference(texmap).get(3), 0x2)
+            if texture:
+                material.set('bitmap', Path(texture).name)
             material.set('ambient', get_color(parameters, 0x00))
             material.set('diffuse', get_color(parameters, 0x01))
             material.set('specular', get_color(parameters, 0x02))
@@ -1106,6 +1138,9 @@ def get_standard_material(refs):
             parablock = refs[4]  # ParameterBlock2
             material.set('glossines', get_value(parablock, 0x02))
             material.set('metallic', get_value(parablock, 0x05))
+    except Exception as exc:
+        print('Error:', exc)
+    return material
     except:
         pass
     return material
@@ -1114,13 +1149,17 @@ def get_standard_material(refs):
 def get_vray_material(vry):
     material = Material()
     try:
-        material.set('diffuse', get_color(vry, 0x01))
-        material.set('specular', get_color(vry, 0x02))
-        material.set('shinines', get_value(vry, 0x03))
-        material.set('refraction', get_value(vry, 0x09))
-        material.set('emissive', get_color(vry, 0x17))
-        material.set('glossines', get_value(vry, 0x18))
-        material.set('metallic', get_value(vry, 0x19))
+        parameters = vry[1]
+        texture = get_bitmap(vry.get(7), VRAY_MTL)
+        if texture:
+            material.set('bitmap', Path(texture).name)
+        material.set('diffuse', get_color(parameters, 0x01))
+        material.set('specular', get_color(parameters, 0x02))
+        material.set('shinines', get_value(parameters, 0x03))
+        material.set('refraction', get_value(parameters, 0x09))
+        material.set('emissive', get_color(parameters, 0x17))
+        material.set('glossines', get_value(parameters, 0x18))
+        material.set('metallic', get_value(parameters, 0x19))
     except:
         pass
     return material
@@ -1129,7 +1168,9 @@ def get_vray_material(vry):
 def get_corona_material(mtl):
     material = Material()
     try:
+        material = Material()
         cor = mtl.children
+        bitmap = get_bitmap(mtl, CORO_MTL)
         material.set('diffuse', get_parameter(cor[3], 0x1))
         material.set('specular', get_parameter(cor[4], 0x1))
         material.set('emissive', get_parameter(cor[8], 0x1))
@@ -1165,7 +1206,7 @@ def adjust_material(filename, search, obj, mat):
         elif (uid == VRAY_MTL):  # VRayMtl
             refs = get_reference(mat)
             mtl_id = mat.get_first(0x5431)
-            material = get_vray_material(refs[1])
+            material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
             refs = get_references(mat)
             mtl_id = mat.get_first(0x0FA0)
@@ -1230,7 +1271,7 @@ def get_rotation(pos):
             rotation = mathutils.Euler((rot[0], rot[1], rot[2])).to_quaternion()
         elif (uid == 0x442313):  # TCB Rotation
             rot = pos.get_first(0x2504).data
-            rotation = mathutils.Quaternion((rot[0], rot[1], rot[2], rot[3]))
+            rotation = mathutils.Quaternion((rot[3], rot[2], rot[1], rot[0]))
         elif (uid == MATRIX_ROT):  # Rotation Wire
             return get_rotation(get_references(pos)[0])
         elif (uid == 0x4B4B1003):  # Rotation List
@@ -1469,7 +1510,7 @@ def create_mesh(context, filename, node, msh, mat, obtypes, search):
     return created, uid
 
 
-def create_object(context, filename, node, obtypes, search):
+def create_object(context, filename, node, obtypes, search, transform):
     parent = get_node_parent(node)
     nodename = get_node_name(node)
     parentname = get_node_name(parent)
@@ -1480,9 +1521,15 @@ def create_object(context, filename, node, obtypes, search):
     for obj in created:
         if obj.name != nodename:
             parent_dict[obj.name] = parentname
-        if nodepivot and obj.type == 'MESH':
-            pivot = mathutils.Vector(nodepivot.data)
-            p_mtx = mathutils.Matrix.Translation(pivot)
+        if transform and obj.type == 'MESH':
+            nodeloca = node.get_first(0x96A)
+            noderota = node.get_first(0x96B)
+            nodesize = node.get_first(0x96C)
+            quats = noderota.data if noderota else (0.0, 0.0, 0.0, 1.0)
+            pivot = mathutils.Vector(nodeloca.data if nodeloca else (0.0, 0.0, 0.0))
+            angle = mathutils.Quaternion((quats[3], quats[2], quats[1], quats[0]))
+            scale = mathutils.Vector(nodesize.data[:3] if nodesize else (1.0, 1.0, 1.0))
+            p_mtx = mathutils.Matrix.LocRotScale(pivot, angle, scale)
             obj.data.transform(p_mtx)
     matrix_dict[nodename] = create_matrix(prs)
     parent_dict[nodename] = parentname
@@ -1494,7 +1541,7 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
     for chunk in parent.children:
         if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
             try:
-                imported.append(create_object(context, filename, chunk, obtypes, search))
+                imported.append(create_object(context, filename, chunk, obtypes, search, transform))
             except Exception as exc:
                 print("\tImportError: %s %s" % (exc, chunk))
 
