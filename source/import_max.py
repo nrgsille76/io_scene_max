@@ -591,36 +591,41 @@ class ByteArrayChunk(MaxChunk):
             self.data = data.decode('UTF-16LE')
         except:
             self.data = data.decode('UTF-8', 'replace')
+        finally:
+            self.data = data.decode('UTF-16LE', 'replace')
 
     def set_meta_data(self, data):
         metafile = {}
-        data = data.split(b'\x00\x00')
-        metadata = list(zip(*[iter(data)]*6))
-        for mdata in metadata:
-            mdata = list(mdata)
-            value = mdata.pop(0)
-            title = mdata.pop(0)
-            mbyte = mdata.pop(0)
-            mpath = mdata.pop(0)
-            drive = mdata.pop(0)
-            root = get_short(value)[0]
-            head = value.removeprefix(b'\x00')
-            meta = struct.unpack('<IQI', head[:16])
-            mkey = str(struct.unpack('>H', mbyte)[0])
-            mdir = drive.decode('UTF-8', 'replace')
-            path = mpath.decode('UTF-8').encode('UTF-32')
-            metafile[meta[1]] = path.decode('UTF-16LE', 'replace')
-            mtyp = mkey + ' ' + title.decode('UTF-8', 'replace') + ' ' + mdir
-            for idx, path in enumerate(mdata):
-                path = path.decode('UTF-8')
-                print(" imgpath: '%s' ->  %s" % (mtyp, path))
-        self.data = metafile
+        try:
+            data = data.split(b'\x00\x00')
+            metadata = list(zip(*[iter(data)]*4))
+            for mdata in metadata:
+                mdata = list(mdata)
+                value = mdata.pop(0)
+                title = mdata.pop(0)
+                mbyte = mdata.pop(0)
+                mpath = mdata.pop(0)
+                value = value.removeprefix(b'\x00').removesuffix(b'\x06')
+                meta = struct.unpack('<HII', value[:10])
+                mkey = str(struct.unpack('>H', mbyte)[0])
+                path = mpath.decode('UTF-8').encode('UTF-32')
+                print('path', path.decode('UTF-16LE', 'replace'))
+                metafile[meta[1]] = path.decode('UTF-16LE', 'replace')
+                mtyp = mkey + ' ' + title.decode('UTF-8', 'replace')
+                for idx, path in enumerate(mdata):
+                    path = path.decode('UTF-8')
+                    print("\tfilepath: %s  '%s' ->  %s" % (meta, mtyp, path))
+        except Exception as exc:
+            self.data = data
+            # print('\tStructError: %s' % exc)
+        finally:
+            self.data = metafile
 
     def set_data(self, data):
         if (self.types in [0x110, 0x340, 0x456, 0x0962, 0x1230, 0x4001]):
             self.set_string(data)
-        elif (self.types in [0x87DE, 0x8DB9]):
-            self.set_path_data(data)
+        elif (self.types in [0x87DE, 0x8DB9, 0xE3AE]):
+            self.set_meta_data(data)
         elif (self.types in [0x1020, 0x1030]):
             self.set(data, '<I', 0, len(data))
         elif (self.types in [0x100, 0x2513]):
@@ -720,7 +725,7 @@ class ChunkReader():
                 head, step = get_long(data, step)
                 if (head in (0xB000000, 0xA040000)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
-            elif (root in (0x8DB9, 0x87DE)):
+            elif (root in (0x8DB9, 0x87DE, 0xE3AE)):
                 chunk = primReader(root, len(data), level, 1)
                 chunk.set_data(data)
                 return [chunk]
@@ -1085,7 +1090,7 @@ def get_bitmap(chunk, uid):
                     if (block.children and get_guid(block) == 0x3333):
                         matlib = block.children[0]
                 if (matlib and matlib.data is not None):
-                    metaindex = struct.unpack('<IQI', matlib.data[:16])
+                    metaindex = struct.unpack('<HII', matlib.data[:10])
                     pathstring = get_metadata(metaindex[1])
         return pathstring
     return None
@@ -1166,11 +1171,14 @@ def get_vray_material(vry):
 
 
 def get_corona_material(mtl):
+    print('mtl', mtl)
     material = Material()
     try:
         material = Material()
-        cor = mtl.children
-        bitmap = get_bitmap(mtl, CORO_MTL)
+        cor = mtl[0].children
+        texture = get_bitmap(mtl[0], CORO_MTL)
+        if texture:
+            material.set('bitmap', Path(texture).name)
         material.set('diffuse', get_parameter(cor[3], 0x1))
         material.set('specular', get_parameter(cor[4], 0x1))
         material.set('emissive', get_parameter(cor[8], 0x1))
@@ -1197,6 +1205,7 @@ def adjust_material(filename, search, obj, mat):
     if (mat is not None):
         uid = get_guid(mat)
         mtl_id = mat.get_first(0x4000)
+        tex_id = mat.get_first(0x21B0)
         if (uid == 0x0002):  # Standard
             refs = get_references(mat)
             material = get_standard_material(refs)
@@ -1204,13 +1213,14 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             material = adjust_material(filename, search, obj, refs[-1])
         elif (uid == VRAY_MTL):  # VRayMtl
-            refs = get_reference(mat)
             mtl_id = mat.get_first(0x5431)
+            refs = get_reference(mat)
             material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
             refs = get_references(mat)
             mtl_id = mat.get_first(0x0FA0)
-            material = get_corona_material(refs[0])
+            texrefs = get_references(refs[0])
+            material = get_corona_material(refs)
         elif (uid == ARCH_MTL):  # Arch
             refs = get_references(mat)
             material = get_arch_material(refs[0])
