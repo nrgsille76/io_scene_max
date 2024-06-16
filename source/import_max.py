@@ -552,17 +552,18 @@ class ImportMaxFile:
 # DATA PROCESSING #
 ###################
 
-class MaxChunk():
+class MaxChunk(object):
     """Representing a chunk of a .max file."""
 
-    def __init__(self, types, size, level, number):
-        self.number = number
+    def __init__(self, types, size, level, number, superid):
+        self.size = size
         self.types = types
         self.level = level
+        self.number = number
+        self.superid = superid
         self.parent = None
         self.previous = None
         self.following = None
-        self.size = size
         self.data = None
 
     def __str__(self):
@@ -572,8 +573,9 @@ class MaxChunk():
 class ByteArrayChunk(MaxChunk):
     """A byte array of a .max chunk."""
 
-    def __init__(self, types, data, level, number):
-        MaxChunk.__init__(self, types, data, level, number)
+    def __init__(self, types, data, level, number, superid):
+        MaxChunk.__init__(self, types, data, level, number, superid)
+        self.superid = 0x6
         self.children = []
 
     def get_first(self, types):
@@ -595,37 +597,33 @@ class ByteArrayChunk(MaxChunk):
             self.data = data.decode('UTF-16LE', 'replace')
 
     def set_meta_data(self, data):
-        metafile = {}
+        metadict = {}
+        matkey = False
         try:
-            data = data.split(b'\x00\x00')
-            metadata = list(zip(*[iter(data)]*4))
+            metadata = list(zip(*[iter(data.split(b'\x00\x00\x00'))]*2))
             for mdata in metadata:
-                mdata = list(mdata)
-                value = mdata.pop(0)
-                title = mdata.pop(0)
-                mbyte = mdata.pop(0)
-                mpath = mdata.pop(0)
-                value = value.removeprefix(b'\x00').removesuffix(b'\x06')
-                meta = struct.unpack('<HII', value[:10])
-                mkey = str(struct.unpack('>H', mbyte)[0])
-                path = mpath.decode('UTF-8').encode('UTF-32')
-                print('path', path.decode('UTF-16LE', 'replace'))
-                metafile[meta[1]] = path.decode('UTF-16LE', 'replace')
-                mtyp = mkey + ' ' + title.decode('UTF-8', 'replace')
-                for idx, path in enumerate(mdata):
-                    path = path.decode('UTF-8')
-                    print("\tfilepath: %s  '%s' ->  %s" % (meta, mtyp, path))
-        except Exception as exc:
+                header = mdata[0]
+                imgkey = header[-1]
+                mtitle = mdata[1].decode('UTF-8').replace(' ','')
+                if (len(header) > 1):
+                    size = len(header[:-5])
+                    head = struct.unpack('<' + 'IH' * int(size / 6), header[:size])
+                    meta = get_longs(header, size, len(header[size:]) // 4)[0]
+                    print("  metadata: %s '%s'...%s" % (hex(head[-1]), imgkey, mtitle))
+                    metakey = meta[0]
+                    metadict[metakey] = [(head[0], head[1])]
+                elif metadict and metakey:
+                    metadict[metakey].insert(-imgkey, (imgkey, mtitle))
+                    print("  imgpath: %s -> '%s: %s'" % (hex(metakey), imgkey, mtitle))
+        except:
             self.data = data
             # print('\tStructError: %s' % exc)
         finally:
-            self.data = metafile
+            self.data = metadict
 
     def set_data(self, data):
         if (self.types in [0x110, 0x340, 0x456, 0x0962, 0x1230, 0x4001]):
             self.set_string(data)
-        elif (self.types in [0x87DE, 0x8DB9, 0xE3AE]):
-            self.set_meta_data(data)
         elif (self.types in [0x1020, 0x1030]):
             self.set(data, '<I', 0, len(data))
         elif (self.types in [0x100, 0x2513]):
@@ -643,8 +641,9 @@ class ByteArrayChunk(MaxChunk):
 class ClassIDChunk(ByteArrayChunk):
     """The class ID subchunk of a .max chunk."""
 
-    def __init__(self, types, data, level, number):
-        MaxChunk.__init__(self, types, data, level, number)
+    def __init__(self, types, data, level, number, superid):
+        MaxChunk.__init__(self, types, data, level, number, superid)
+        self.superid = 0x5
         self.dll = None
 
     def set_data(self, data):
@@ -659,20 +658,22 @@ class ClassIDChunk(ByteArrayChunk):
 class DirectoryChunk(ByteArrayChunk):
     """The directory chunk of a .max file."""
 
-    def __init__(self, types, data, level, number):
-        MaxChunk.__init__(self, types, data, level, number)
+    def __init__(self, types, data, level, number, superid):
+        MaxChunk.__init__(self, types, data, level, number, superid)
+        self.superid = 0x4
 
     def set_data(self, data):
-        if (self.types in (0x2037, 0x2039):
+        if (self.types in (0x2037, 0x2039)):
             self.set_string(data)
 
 
 class ContainerChunk(MaxChunk):
     """A container chunk in a .max file wich includes byte arrays."""
 
-    def __init__(self, types, data, level, number, primReader=ByteArrayChunk):
-        MaxChunk.__init__(self, types, data, level, number)
+    def __init__(self, types, data, level, number, superid, primReader=ByteArrayChunk):
+        MaxChunk.__init__(self, types, data, level, number, superid)
         self.primReader = primReader
+        self.superid = superid
 
     def __str__(self):
         return "%s[%4x]%04X" % ("" * self.level, self.number, self.types)
@@ -687,15 +688,16 @@ class ContainerChunk(MaxChunk):
         previous = None
         following = None
         reader = ChunkReader()
-        self.children = reader.get_chunks(data, self.level + 1, ContainerChunk, self.primReader)
+        self.children = reader.get_chunks(data, self.superid, self.level + 1, ContainerChunk, self.primReader)
 
 
 class SceneChunk(ContainerChunk):
     """The scene chunk of a .max file wich includes the relevant data for blender."""
 
-    def __init__(self, types, data, level, number, primReader=ByteArrayChunk):
-        MaxChunk.__init__(self, types, data, level, number)
+    def __init__(self, types, data, level, number, superid, primReader=ByteArrayChunk):
+        MaxChunk.__init__(self, types, data, level, number, superid)
         self.primReader = primReader
+        self.superid = 0x2
 
     def __str__(self):
         return "%s[%4x]%s" % ("" * self.level, self.number, get_cls_name(self))
@@ -703,18 +705,19 @@ class SceneChunk(ContainerChunk):
     def set_data(self, data):
         previous = None
         following = None
-        # print('Scene', "%s" % (self))
+        # print('Scene', "%s" %(self))
         reader = ChunkReader()
-        self.children = reader.get_chunks(data, self.level + 1, SceneChunk, ByteArrayChunk)
+        self.children = reader.get_chunks(data, self.superid, self.level + 1, SceneChunk, ByteArrayChunk)
 
 
-class ChunkReader():
+class ChunkReader(object):
     """The chunk reader class for decoding the byte arrays."""
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, superid=None):
+        self.superid = superid
         self.name = name
 
-    def get_chunks(self, data, level, conReader, primReader):
+    def get_chunks(self, data, superid, level, conReader, primReader):
         chunks = []
         offset = 0
         if (level == 0):
@@ -722,20 +725,21 @@ class ChunkReader():
             long, step = get_long(data, step)
             print("  reading '%s'..." % self.name, len(data))
             if (root == 0x8B1F):
-                head, step = get_long(data, step)
-                if (head in (0xB000000, 0xA040000)):
+                long, step = get_long(data, step)
+                if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
-            elif (root in (0x8DB9, 0x87DE, 0xE3AE)):
-                chunk = primReader(root, len(data), level, 1)
-                chunk.set_data(data)
+            elif (superid == 0x000B):
+                chunk = primReader(root, superid, len(data), level, 1)
+                chunk.set_meta_data(data)
                 return [chunk]
         while offset < len(data):
             old = offset
-            offset, chunk = self.get_next_chunk(data, offset, level, len(chunks), conReader, primReader)
+            offset, chunk = self.get_next_chunk(data, superid, offset, level,
+                                                len(chunks), conReader, primReader)
             chunks.append(chunk)
         return chunks
 
-    def get_next_chunk(self, data, offset, level, number, conReader, primReader):
+    def get_next_chunk(self, data, superid, offset, level, number, conReader, primReader):
         header = 6
         typ, siz = struct.unpack("<Hi", data[offset:offset + header])
         chunksize = siz & UNKNOWN_SIZE
@@ -744,15 +748,15 @@ class ChunkReader():
             header += 8
             chunksize = siz & MAXFILE_SIZE
         if (siz < 0):
-            chunk = conReader(typ, chunksize, level, number, primReader)
+            chunk = conReader(typ, superid, chunksize, level, number, primReader)
         else:
-            chunk = primReader(typ, chunksize, level, number)
+            chunk = primReader(typ, superid, chunksize, level, number)
         chunkdata = data[offset + header:offset + chunksize]
         chunk.set_data(chunkdata)
         return offset + chunksize, chunk
 
 
-class Point3d():
+class Point3d(object):
     """Representing a three dimensional vector plus pointflag."""
 
     def __init__(self):
@@ -769,7 +773,7 @@ class Point3d():
                                        ','.join("%X" % f for f in self.fA))
 
 
-class Material():
+class Material(object):
     """Representing a material chunk of a scene chunk."""
 
     def __init__(self):
@@ -816,7 +820,7 @@ def get_node_name(node):
 
 def get_class(chunk):
     global CLS_DIR3_LIST
-    if (chunk and chunk.types < len(CLS_DIR3_LIST)):
+    if (chunk.types < len(CLS_DIR3_LIST)):
         return CLS_DIR3_LIST[chunk.types]
     return None
 
@@ -834,8 +838,9 @@ def get_dll(chunk):
 def get_metadata(index):
     global META_DATA
     pathdata = META_DATA[0].data
-    if pathdata is not None:
-        return pathdata.get(index)
+    if pathdata:
+        pathname = pathdata.get(index)
+        return pathname[0][1] if pathname else None
     return pathdata
 
 
@@ -888,11 +893,11 @@ def get_reference(chunk):
     return references
 
 
-def read_chunks(maxfile, name, conReader=ContainerChunk, primReader=ByteArrayChunk):
+def read_chunks(maxfile, name, conReader=ContainerChunk, primReader=ByteArrayChunk, superId=None):
     with maxfile.openstream(name) as file:
         scene = file.read()
         reader = ChunkReader(name)
-        return reader.get_chunks(scene, 0, conReader, primReader)
+        return reader.get_chunks(scene, superId, 0, conReader, primReader)
 
 
 def read_class_data(maxfile, filename):
@@ -1090,8 +1095,10 @@ def get_bitmap(chunk, uid):
                     if (block.children and get_guid(block) == 0x3333):
                         matlib = block.children[0]
                 if (matlib and matlib.data is not None):
-                    metaindex = struct.unpack('<HII', matlib.data[:10])
-                    pathstring = get_metadata(metaindex[1])
+                    idsize = len(matlib.data[:-4])
+                    assetid = struct.unpack('<' + 'IH' * int(idsize / 6), matlib.data[:idsize])
+                    metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
+                    pathstring = get_metadata(metaidx[0])
         return pathstring
     return None
 
@@ -1577,8 +1584,9 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
 
 def read_scene(context, maxfile, filename, mscale, obtypes, search, transform):
     global SCENE_LIST, META_DATA
-    SCENE_LIST = read_chunks(maxfile, 'Scene', conReader=SceneChunk)
-    META_DATA = read_chunks(maxfile, maxfile.direntries[0xB].name) if any(entry and entry.sid == 0xB for entry in maxfile.direntries) else []
+    SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
+    META_DATA = (read_chunks(maxfile, maxfile.direntries[0xB].name, superId=11) if
+                 any(entry and entry.sid == 0xB for entry in maxfile.direntries) else [])
     make_scene(context, filename, mscale, obtypes, search, transform, SCENE_LIST[0])
     # For debug: Print directory
     # print('Directory', maxfile.direntries[0].kids_dict.keys())
