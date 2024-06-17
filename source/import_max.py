@@ -1150,9 +1150,6 @@ def get_standard_material(refs):
             parablock = refs[4]  # ParameterBlock2
             material.set('glossines', get_value(parablock, 0x02))
             material.set('metallic', get_value(parablock, 0x05))
-    except Exception as exc:
-        print('Error:', exc)
-    return material
     except:
         pass
     return material
