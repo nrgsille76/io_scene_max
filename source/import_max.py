@@ -575,7 +575,7 @@ class ByteArrayChunk(MaxChunk):
 
     def __init__(self, types, data, level, number, superid):
         MaxChunk.__init__(self, types, data, level, number, superid)
-        self.superid = 0x6
+        self.superid = superid
         self.children = []
 
     def get_first(self, types):
@@ -622,15 +622,15 @@ class ByteArrayChunk(MaxChunk):
             self.data = metadict
 
     def set_data(self, data):
-        if (self.types in [0x110, 0x340, 0x456, 0x0962, 0x1230, 0x4001]):
+        if (self.types in TYP_NAME):
             self.set_string(data)
-        elif (self.types in [0x1020, 0x1030]):
+        elif (self.types in TYP_LINK):
             self.set(data, '<I', 0, len(data))
-        elif (self.types in [0x100, 0x2513]):
+        elif (self.types in TYP_VALUE):
             self.set(data, '<f', 0, len(data))
-        elif (self.types in [0x2034, 0x2035]):
+        elif (self.types in TYP_REFS):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
-        elif (self.types in [0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511]):
+        elif (self.types in TYP_ARRAY):
             self.set(data, '<' + 'f' * int(len(data) / 4), 0, len(data))
         elif (self.types == 0x2510):
             self.set(data, '<' + 'f' * int(len(data) / 4 - 1) + 'I', 0, len(data))
@@ -812,7 +812,7 @@ def get_node_parent(node):
 
 def get_node_name(node):
     if (node):
-        name = node.get_first(TYP_NAME)
+        name = node.get_first(0x0962)
         if (name):
             return name.data
     return None
@@ -902,7 +902,7 @@ def read_chunks(maxfile, name, conReader=ContainerChunk, primReader=ByteArrayChu
 
 def read_class_data(maxfile, filename):
     global CLS_DATA
-    CLS_DATA = read_chunks(maxfile, 'ClassData')
+    CLS_DATA = read_chunks(maxfile, 'ClassData', superId=6)
 
 
 def read_class_directory(maxfile, filename):
@@ -917,7 +917,7 @@ def read_class_directory(maxfile, filename):
 
 def read_config(maxfile, filename):
     global CONFIG
-    CONFIG = read_chunks(maxfile, 'Config')
+    CONFIG = read_chunks(maxfile, 'Config', superId=7)
 
 
 def read_directory(maxfile, filename):
@@ -927,7 +927,7 @@ def read_directory(maxfile, filename):
 
 def read_video_postqueue(maxfile, filename):
     global VID_PST_QUE
-    VID_PST_QUE = read_chunks(maxfile, 'VideoPostQueue')
+    VID_PST_QUE = read_chunks(maxfile, 'VideoPostQueue', superId=8)
 
 
 def calc_point(data):
@@ -1576,7 +1576,10 @@ def make_scene(context, filename, mscale, obtypes, search, transform, parent):
                 except TypeError as te:
                     print("\tTypeError: %s '%s'" % (te, pt_name))
             if obj_mtx:
-                trans_mtx = prt_mtx @ obj_mtx
+                if obj.parent and obj.parent.empty_display_type != 'SINGLE_ARROW' and obj.type != 'MESH':
+                    trans_mtx = obj.parent.matrix_world @ obj_mtx
+                else:
+                    trans_mtx = prt_mtx @ obj_mtx
                 if transform:
                     obj.matrix_world = trans_mtx
                 obj.matrix_world = mscale @ obj.matrix_world
