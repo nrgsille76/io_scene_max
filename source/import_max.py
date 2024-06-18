@@ -1366,10 +1366,12 @@ def adjust_matrix(obj, node):
 
 
 def create_shape(context, filename, node, key, pts, indices, uvdata, mat, obtypes, search):
-    name = node.get_first(TYP_NAME).data
-    shape = bpy.data.meshes.new(name)
+    namedata = node.get_first(0x962)
+    if (namedata is not None):
+        name = namedata.data
     if (key is not None):
         name = "%s_%d" % (name, key)
+    shape = bpy.data.meshes.new(name)
     data = []
     if (pts):
         loopstart = []
@@ -1502,10 +1504,11 @@ def create_shell(context, filename, node, shell, mat, obtypes, search):
 
 
 def create_skipable(context, node, skip):
-    if node is not None:
-        name = node.get_first(0x0960).data
+    namedata = node.get_first(0x0960)
+    if namedata is not None:
+        name = namedata.data
         print("    skipping %s '%s'... " % (skip, name))
-        return []
+    return []
 
 
 def create_mesh(context, filename, node, msh, mat, obtypes, search):
