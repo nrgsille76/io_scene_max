@@ -1502,9 +1502,10 @@ def create_shell(context, filename, node, shell, mat, obtypes, search):
 
 
 def create_skipable(context, node, skip):
-    name = node.get_first(TYP_NAME).data if node else None
-    print("    skipping %s '%s'... " % (skip, name))
-    return []
+    if node is not None:
+        name = node.get_first(TYP_NAME).data
+        print("    skipping %s '%s'... " % (skip, name))
+        return []
 
 
 def create_mesh(context, filename, node, msh, mat, obtypes, search):
