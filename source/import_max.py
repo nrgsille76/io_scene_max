@@ -1503,7 +1503,7 @@ def create_shell(context, filename, node, shell, mat, obtypes, search):
 
 def create_skipable(context, node, skip):
     if node is not None:
-        name = node.get_first(TYP_NAME).data
+        name = node.get_first(0x0960).data
         print("    skipping %s '%s'... " % (skip, name))
         return []
 
