@@ -1179,7 +1179,6 @@ def get_vray_material(vry):
 
 
 def get_corona_material(mtl):
-    print('mtl', mtl)
     material = Material()
     try:
         material = Material()
