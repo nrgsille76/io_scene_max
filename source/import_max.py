@@ -46,9 +46,13 @@ FREESECT = 0xFFFFFFFF  # (-1) unallocated sector
 MAX_STREAM = 2  # element is a stream object
 ROOT_STORE = 5  # element is a root storage
 
-TYP_NAME = 0x0962
-INVALID_NAME = re.compile('^[0-9].*')
+TYP_LINK = {0x1020, 0x1030}
+TYP_REFS = {0x2034, 0x2035}
+TYP_VALUE = {0x100, 0x2513}
+TYP_NAME = {0x110, 0x340, 0x456, 0x0962, 0x1230, 0x4001}
+TYP_ARRAY = {0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
 UNPACK_BOX_DATA = struct.Struct('<HIHHBff').unpack_from  # Index, int, 2short, byte, 2float
+INVALID_NAME = re.compile('^[0-9].*')
 
 FLOAT_POINT = 0x71F11549498702E7  # Float Wire
 MATRIX_POS = 0xFFEE238A118F7E02  # Position XYZ
