@@ -724,7 +724,7 @@ class ChunkReader(object):
     def get_chunks(self, data, superid, level, conReader, primReader):
         chunks = []
         offset = 0
-        if (level == 0):
+        if (len(data) > 1 and level == 0):
             root, step = get_short(data, 0)
             long, step = get_long(data, step)
             print("  reading '%s'..." % self.name, len(data))
