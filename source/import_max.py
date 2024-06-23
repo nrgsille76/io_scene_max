@@ -1303,7 +1303,6 @@ def adjust_material(filename, search, obj, mat):
             matShader.emission_color = material.get('emissive', (0, 0, 0))
             matShader.ior = material.get('refraction', 1.45)
             if texname is not None:
-                print('texname', texname)
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
                 if image is not None:
                     matShader.base_color_texture.image = image
