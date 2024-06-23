@@ -1290,11 +1290,9 @@ def adjust_material(filename, search, obj, mat):
         if (obj is not None) and (material is not None):
             texname = material.get('bitmap', None)
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
-            if matname in materials:
-                objMaterial = bpy.data.materials.get(matname)
-            else:
+            objMaterial = bpy.data.materials.get(matname)
+            if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
-                materials.add(matname)
             obj.data.materials.append(objMaterial)
             matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
             matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
