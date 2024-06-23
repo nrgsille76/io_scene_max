@@ -559,20 +559,16 @@ class ImportMaxFile:
 class MaxChunk(object):
     """Representing a chunk of a .max file."""
 
-    __slots__ = ("types", "superid", "size", "level",
-                 "number", "data", "parent", "pre", "post")
+    __slots__ = ("superid", "types", "data", "number", "level", "size")
 
-    def __init__(self, types, superid, size, level, number, data=None):
+    def __init__(self, superid, types ,data, number, level, size):
+        self.superid = superid
         self.types = types
-        self.supid = superid
-        self.size = size
-        self.level = level
-        self.number = number
-        self.data = data
-        self.parent = None
-        self.pre = None
-        self.post = None
-
+        self.data = None
+        self.number = 0
+        self.level = 0
+        self.size = 0
+        
     def __str__(self):
         return "%s[%4x]%04X:%s" % ("" * self.level, self.number, self.types, self.data)
 
@@ -580,8 +576,8 @@ class MaxChunk(object):
 class ByteArrayChunk(MaxChunk):
     """A byte array of a .max chunk."""
 
-    def __init__(self, types, superid, size, level, number, data):
-        MaxChunk.__init__(self, types, superid, level, number, data)
+    def __init__(self, superid, types, data, number, level, size):
+        MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.superid = superid
         self.children = []
 
@@ -648,8 +644,8 @@ class ByteArrayChunk(MaxChunk):
 class ClassIDChunk(ByteArrayChunk):
     """The class ID subchunk of a .max chunk."""
 
-    def __init__(self, types, superid, size, level, number, data):
-        MaxChunk.__init__(self, types, superid, size, level, number, data)
+    def __init__(self, superid, types, data, number, level, size):
+        MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.superid = 0x5
         self.dll = None
 
@@ -665,8 +661,8 @@ class ClassIDChunk(ByteArrayChunk):
 class DirectoryChunk(ByteArrayChunk):
     """The directory chunk of a .max file."""
 
-    def __init__(self, types, superid, size, level, number, data):
-        MaxChunk.__init__(self, types, superid, size, level, number, data)
+    def __init__(self, superid, types, data, number, level, size):
+        MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.superid = 0x4
 
     def set_data(self, data):
@@ -677,13 +673,13 @@ class DirectoryChunk(ByteArrayChunk):
 class ContainerChunk(MaxChunk):
     """A container chunk in a .max file wich includes byte arrays."""
 
-    def __init__(self, types, superid, size, level, number, data, primReader=ByteArrayChunk):
-        MaxChunk.__init__(self, types, superid, size, level, number, data)
+    def __init__(self, superid, types, data, number, level, size, primReader=ByteArrayChunk):
+        MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.primReader = primReader
         self.superid = superid
 
     def __str__(self):
-        return "%s[%4x]%04X" % ("" * self.level, self.number, self.types)
+        return "%s[%4x]%04X %X" % ("" * self.level, self.number, self.types, self.superid)
 
     def get_first(self, types):
         for child in self.children:
@@ -692,39 +688,34 @@ class ContainerChunk(MaxChunk):
         return None
 
     def set_data(self, data):
-        pre = None
-        post = None
         reader = ChunkReader()
-        self.children = reader.get_chunks(data, self.superid, self.level + 1, ContainerChunk, self.primReader)
+        self.children = reader.get_chunks(self.superid, data, self.level + 1, ContainerChunk, self.primReader)
 
 
 class SceneChunk(ContainerChunk):
     """The scene chunk of a .max file wich includes the relevant data for blender."""
 
-    def __init__(self, types, superid, size, level, number, data, primReader=ByteArrayChunk):
-        MaxChunk.__init__(self, types, superid, size, level, number, data)
+    def __init__(self, superid, types, data, number, level, size, primReader=ByteArrayChunk):
+        MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.primReader = primReader
         self.superid = 0x2
 
     def __str__(self):
-        return "%s[%4x]%s" % ("" * self.level, self.number, get_cls_name(self))
+        return "%s[%4x]%s %X" % ("" * self.level, self.number, get_cls_name(self), self.superid)
 
     def set_data(self, data):
-        pre = None
-        post = None
         # print('Scene', "%s %s" % (hex(self.types), self))
         reader = ChunkReader()
-        self.children = reader.get_chunks(data, self.superid, self.level + 1, SceneChunk, ByteArrayChunk)
+        self.children = reader.get_chunks(self.superid, data, self.level + 1, SceneChunk, ByteArrayChunk)
 
 
 class ChunkReader(object):
     """The chunk reader class for decoding the byte arrays."""
 
-    def __init__(self, name=None, superid=None):
-        self.superid = superid
+    def __init__(self, name=None):
         self.name = name
 
-    def get_chunks(self, data, superid, level, conReader, primReader):
+    def get_chunks(self, superid, data, level, conReader, primReader):
         chunks = []
         offset = 0
         if (len(data) > ROOT_STORE and level == 0):
@@ -736,17 +727,17 @@ class ChunkReader(object):
                 if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
             elif (superid == 0x000B):
-                chunk = primReader(root, superid, len(data), level, 1, data)
+                chunk = primReader(superid, root, data, 1, level, len(data))
                 chunk.set_meta_data(data)
                 return [chunk]
         while offset < len(data):
             old = offset
-            offset, chunk = self.get_next_chunk(data, superid, offset, level,
-                                                len(chunks), conReader, primReader)
+            offset, chunk = self.get_next_chunk(superid, data, offset, len(chunks),
+                                                level, conReader, primReader)
             chunks.append(chunk)
         return chunks
 
-    def get_next_chunk(self, data, superid, offset, level, number, conReader, primReader):
+    def get_next_chunk(self, superid, data, offset, number, level, conReader, primReader):
         header = 6
         typ, siz = struct.unpack("<Hi", data[offset:offset + header])
         chunksize = siz & UNKNOWN_SIZE
@@ -755,9 +746,9 @@ class ChunkReader(object):
             header += 8
             chunksize = siz & MAXFILE_SIZE
         if (siz < 0):
-            chunk = conReader(typ, superid, chunksize, level, number, data, primReader)
+            chunk = conReader(superid, typ, data, number, level, chunksize, primReader)
         else:
-            chunk = primReader(typ, superid, chunksize, level, number, data)
+            chunk = primReader(superid, typ, data, number, level, chunksize)
         chunkdata = data[offset + header:offset + chunksize]
         chunk.set_data(chunkdata)
         return offset + chunksize, chunk
@@ -766,20 +757,17 @@ class ChunkReader(object):
 class Mesh3d(object):
     """Class representing a editable poly mesh object."""
     
-    __slots__ = ("keys", "maps", "verts", "loops", "faces",
-                 "cords", "uvids", "points", "polys", "tris")
-    
-    def __init__(self, keys={}, maps=[], verts=[], loops=[], faces=[], cords=[], uvids=[]):
-        self.keys = keys
-        self.maps = maps
-        self.verts = verts
-        self.faces = faces
-        self.loops = loops
-        self.cords = cords
-        self.uvids = uvids
+    def __init__(self):
         self.points = None
         self.polys = None
         self.tris = None
+        self.verts = []
+        self.loops = []
+        self.faces = []
+        self.cords = []
+        self.uvids = []
+        self.maps = []
+        self.keys = {}
 
     def __str__(self):
         coordsize = [len(crds) // 3 for crds in self.cords]
@@ -803,16 +791,14 @@ class Mesh3d(object):
 class Point3d(object):
     """Class representing a three dimensional vector plus pointflag."""
 
-    __slots__ = ("points", "flags", "group", "flag1", "flag2", "flag3", "fbits")
-
-    def __init__(self, points=None, flags=0, group=0, flag1=0, flag2=0, flag3=0, fbits=[]):
-        self.points = points
-        self.flags = flags
-        self.group = group
-        self.flag1 = flag1
-        self.flag2 = flag2
-        self.flag3 = flag3
-        self.fbits = fbits
+    def __init__(self):
+        self.points = None
+        self.flags = 0
+        self.group = 0
+        self.flag1 = 0
+        self.flag2 = 0
+        self.flag3 = 0
+        self.fbits = []
 
     def __str__(self):
         return "[%s]:'%X'%x,%x,%x[%s]" % ('/'.join("%d" % p for p in self.points),
@@ -944,7 +930,7 @@ def read_chunks(maxfile, name, conReader=ContainerChunk, primReader=ByteArrayChu
     with maxfile.openstream(name) as file:
         scene = file.read()
         reader = ChunkReader(name)
-        return reader.get_chunks(scene, superId, 0, conReader, primReader)
+        return reader.get_chunks(superId, scene, 0, conReader, primReader)
 
 
 def read_class_data(maxfile, filename):
