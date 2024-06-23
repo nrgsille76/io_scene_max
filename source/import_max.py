@@ -733,7 +733,7 @@ class ChunkReader(object):
             print("  reading '%s'..." % self.name, len(data))
             if (root == 0x8B1F):
                 long, step = get_long(data, step)
-                if (long in (0xB000000, 0xA040000)):
+                if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
             elif (superid == 0x000B):
                 chunk = primReader(root, superid, len(data), level, 1, data)
@@ -1303,6 +1303,7 @@ def adjust_material(filename, search, obj, mat):
             matShader.emission_color = material.get('emissive', (0, 0, 0))
             matShader.ior = material.get('refraction', 1.45)
             if texname is not None:
+                print('texname', texname)
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
                 if image is not None:
                     matShader.base_color_texture.image = image
