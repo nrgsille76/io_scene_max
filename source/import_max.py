@@ -48,8 +48,8 @@ ROOT_STORE = 5  # element is a root storage
 
 TYP_VALUE = {0x100, 0x2513}
 TYP_REFS = {0x1040, 0x2034, 0x2035}
-TYP_LINK = {0x1020, 0x1030, 0x1050}
-TYP_NAME = {0x110, 0x340, 0x456, 0x962, 0x10A0, 0x1010, 0x1230, 0x4001}
+TYP_LINK = {0x1020, 0x1030, 0x1050, 0x1080, 0x3002, 0x4003}
+TYP_NAME = {0x340, 0x456, 0x962, 0x10A0, 0x1010, 0x1230, 0x4001}
 TYP_ARRAY = {0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
 UNPACK_BOX_DATA = struct.Struct('<HIHHBff').unpack_from  # Index, int, 2short, byte, 2float
 INVALID_NAME = re.compile('^[0-9].*')
@@ -559,12 +559,12 @@ class ImportMaxFile:
 class MaxChunk(object):
     """Representing a chunk of a .max file."""
 
-    __slots__ = ("superid", "types", "data", "number", "level", "size")
+    __slots__ = ("superid", "types", "level", "number", "size", "data")
 
-    def __init__(self, superid, types ,data, number, level, size):
+    def __init__(self, superid, types, level, number, size, data=None):
         self.superid = superid
         self.types = types
-        self.data = None
+        self.data = data
         self.number = 0
         self.level = 0
         self.size = 0
@@ -576,8 +576,8 @@ class MaxChunk(object):
 class ByteArrayChunk(MaxChunk):
     """A byte array of a .max chunk."""
 
-    def __init__(self, superid, types, data, number, level, size):
-        MaxChunk.__init__(self, superid, types, data, number, level, size)
+    def __init__(self, superid, types, level, number, size, data):
+        MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = superid
         self.children = []
 
@@ -644,8 +644,8 @@ class ByteArrayChunk(MaxChunk):
 class ClassIDChunk(ByteArrayChunk):
     """The class ID subchunk of a .max chunk."""
 
-    def __init__(self, superid, types, data, number, level, size):
-        MaxChunk.__init__(self, superid, types, data, number, level, size)
+    def __init__(self, superid, types, level, number, size, data):
+        MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = 0x5
         self.dll = None
 
@@ -661,8 +661,8 @@ class ClassIDChunk(ByteArrayChunk):
 class DirectoryChunk(ByteArrayChunk):
     """The directory chunk of a .max file."""
 
-    def __init__(self, superid, types, data, number, level, size):
-        MaxChunk.__init__(self, superid, types, data, number, level, size)
+    def __init__(self, superid, types, level, number, size, data):
+        MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = 0x4
 
     def set_data(self, data):
@@ -673,8 +673,8 @@ class DirectoryChunk(ByteArrayChunk):
 class ContainerChunk(MaxChunk):
     """A container chunk in a .max file wich includes byte arrays."""
 
-    def __init__(self, superid, types, data, number, level, size, primReader=ByteArrayChunk):
-        MaxChunk.__init__(self, superid, types, data, number, level, size)
+    def __init__(self, superid, types, level, number, size, data, primReader=ByteArrayChunk):
+        MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.primReader = primReader
         self.superid = superid
 
@@ -727,17 +727,17 @@ class ChunkReader(object):
                 if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
             elif (superid == 0x000B):
-                chunk = primReader(superid, root, data, 1, level, len(data))
+                chunk = primReader(superid, root, level, 1, len(data), data)
                 chunk.set_meta_data(data)
                 return [chunk]
         while offset < len(data):
             old = offset
-            offset, chunk = self.get_next_chunk(superid, data, offset, len(chunks),
-                                                level, conReader, primReader)
+            offset, chunk = self.get_next_chunk(superid, data, offset, level,
+                                                len(chunks), conReader, primReader)
             chunks.append(chunk)
         return chunks
 
-    def get_next_chunk(self, superid, data, offset, number, level, conReader, primReader):
+    def get_next_chunk(self, superid, data, offset, level, number, conReader, primReader):
         header = 6
         typ, siz = struct.unpack("<Hi", data[offset:offset + header])
         chunksize = siz & UNKNOWN_SIZE
@@ -746,9 +746,9 @@ class ChunkReader(object):
             header += 8
             chunksize = siz & MAXFILE_SIZE
         if (siz < 0):
-            chunk = conReader(superid, typ, data, number, level, chunksize, primReader)
+            chunk = conReader(superid, typ, level, number, chunksize, data, primReader)
         else:
-            chunk = primReader(superid, typ, data, number, level, chunksize)
+            chunk = primReader(superid, typ, level, number, chunksize, data)
         chunkdata = data[offset + header:offset + chunksize]
         chunk.set_data(chunkdata)
         return offset + chunksize, chunk
@@ -780,12 +780,10 @@ class Mesh3d(object):
         self.keys.clear()
         self.faces.clear()
         for point in indices:
-            face = point.points
+            ply = point.points
             key = point.group
-            self.faces.append(face)
-            if (key not in self.keys):
-                self.keys[key] = []
-            self.keys[key].append(face)
+            self.faces.append(ply)
+            self.keys.setdefault(key, []).append(ply)
 
 
 class Point3d(object):
@@ -1054,21 +1052,14 @@ def get_mesh_polys(data):
     return polygons
 
 
-def get_poly_ngons(chunk):
-    polylist = []
-    data = chunk.data
-    counts, offset = get_long(data)
-    while (offset < len(data)):
-        pnt = Point3d()
-        pnt.flags, offset = get_short(data, offset)
-        pnt.group, offset = get_short(data, offset)
-        edge, offset = get_longs(data, offset, 2)
-        (v3, v4), offset = get_longs(data, offset, 2)
-        (pnt.flag1, pnt.flag2), offset = get_shorts(data, offset, 2)
-        v4 = edge[0] if v4 == FREESECT else v4
-        pnt.points = edge + (v3, v4)
-        polylist.append(pnt)
-    return polylist
+def get_face_chunks(chunk):
+    faceflags = get_long(chunk.data, 0)
+    for cnk in chunk.children:
+        print('cnk', hex(cnk.types), cnk)
+        if (cnk.types == 0x0110):
+            size, step = get_long(cnk.data, 0)
+            face, step = get_longs(cnk.data, step, size)
+    return face
 
 
 def get_poly_data(chunk):
@@ -1082,15 +1073,18 @@ def get_poly_data(chunk):
     return polylist
 
 
-def get_mesh_loops(chunk):
-    offset = 0
-    meshloops = []
+def get_poly_loops(chunk):
+    looplist = []
     data = chunk.data
+    counts, offset = get_long(data)
     while (offset < len(data)):
-        count, starts = get_long(data, offset)
-        loops, offset = get_longs(data, starts, count)
-        meshloops.extend(loops)
-    return meshloops
+        count, offset = get_long(data, offset)
+        point, offset = get_longs(data, offset, 2)
+        (lp, sp), offset = get_longs(data, offset, 2)
+        flags, offset = get_long(data, offset)
+        loops = (*point, lp) if sp == FREESECT else point + (lp, sp)
+        looplist.append(loops)
+    return looplist
 
 
 def get_uvw_coords(chunk):
@@ -1485,18 +1479,19 @@ def create_editable_poly(context, settings, node, msh, mat):
     created = []
     if (polychunk):
         mesh = Mesh3d()
-        mesh.maps.clear()
-        mesh.cords.clear()
-        mesh.uvids.clear()
         for child in polychunk.children:
             if isinstance(child.data, tuple):
                 created = create_shape(context, settings, node, mesh, mat)
             elif (child.types == 0x0100):
                 mesh.verts = calc_point(child.data)
             elif (child.types == 0x0108):
-                mesh.polys = get_poly_ngons(child)
+                mesh.polys = get_poly_loops(child)
             elif (child.types == 0x010A):
                 mesh.tris = calc_point_float(child.data)
+            elif (child.types == 0x0114):
+                vertidx = get_long(child.data, 0)[0]
+            elif (child.types == 0x0118):
+                mesh.faces.append(get_face_chunks(child))
             elif (child.types == 0x011A):
                 mesh.points = calc_point_3d(child)
             elif (child.types == 0x0124):
@@ -1510,8 +1505,7 @@ def create_editable_poly(context, settings, node, msh, mat):
         if (mesh.points is not None):
             mesh.set(mesh.points)
             created += create_shape(context, settings, node, mesh, mat)
-        elif (mesh.polys is not None):
-            mesh.set(mesh.polys)
+        elif (mesh.faces is not None):
             created += create_shape(context, settings, node, mesh, mat)
         elif (mesh.tris is not None) and 'UV' not in obtypes:
             created += create_shape(context, settings, node, mesh, mat)
@@ -1523,9 +1517,6 @@ def create_editable_mesh(context, settings, node, msh, mat):
     created = []
     if (meshchunk):
         editmesh = Mesh3d()
-        editmesh.maps.clear()
-        editmesh.cords.clear()
-        editmesh.uvids.clear()
         vertex_chunk = meshchunk.get_first(0x0914)
         clsid_chunk = meshchunk.get_first(0x0912)
         coord_chunk = meshchunk.get_first(0x2394)
