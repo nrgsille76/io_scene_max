@@ -1452,13 +1452,13 @@ def create_shape(context, settings, node, mesh, mat):
     object_list.append(obj)
     if (len(mesh.keys) > 0):
         for idx, (key, part) in enumerate(mesh.keys.items()):
-            name = '%s_%d' % (name, key)
-            meshpart = draw_shape(name, mesh, part, mat)
+            partname = '%s_%d' % (name, key)
+            meshpart = draw_shape(partname, mesh, part, mat)
             if (idx < len(mesh.maps) and 'UV' in obtypes):
                 meshpart = draw_map(meshpart, mesh.maps[idx], mesh.cords[idx], mesh.uvids[idx])
             meshpart.validate()
             meshpart.update()
-            partobj = bpy.data.objects.new(name, meshpart)
+            partobj = bpy.data.objects.new(partname, meshpart)
             context.view_layer.active_layer_collection.collection.objects.link(partobj)
             if ('MATERIAL' in obtypes):
                 adjust_material(filename, search, partobj, mat)
