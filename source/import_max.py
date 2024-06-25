@@ -1055,7 +1055,6 @@ def get_mesh_polys(data):
 def get_face_chunks(chunk):
     faceflags = get_long(chunk.data, 0)
     for cnk in chunk.children:
-        print('cnk', hex(cnk.types), cnk)
         if (cnk.types == 0x0110):
             size, step = get_long(cnk.data, 0)
             face, step = get_longs(cnk.data, step, size)
