@@ -726,7 +726,7 @@ class ChunkReader(object):
                 long, step = get_long(data, step)
                 if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
-            elif (superid == (0xA, 0xB)):
+            elif (superid in (0xA, 0xB)):
                 chunk = primReader(superid, root, level, 1, len(data), data)
                 chunk.set_meta_data(data)
                 return [chunk]
