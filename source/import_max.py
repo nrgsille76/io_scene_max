@@ -609,7 +609,7 @@ class ByteArrayChunk(MaxChunk):
                 imgkey = header[-1]
                 mtitle = b''.join(mdata[1].split(b'\x00')).decode('UTF-8')
                 if (len(header) > 1):
-                    size = len(header[:-5])
+                    size = len(header[:-ROOT_STORE])
                     head = struct.unpack('<' + 'IH' * int(size / 6), header[:size])
                     meta = get_longs(header, size, len(header[size:]) // 4)[0]
                     print("  metadata: %s '%s'...%s" % (hex(head[-1]), imgkey, mtitle))
@@ -758,32 +758,29 @@ class Mesh3d(object):
     """Class representing a editable poly mesh object."""
     
     def __init__(self):
-        self.points = None
-        self.polys = None
-        self.tris = None
         self.verts = []
-        self.loops = []
         self.faces = []
+        self.polys = []
         self.cords = []
         self.uvids = []
         self.maps = []
-        self.keys = {}
+        self.mats = []
+        self.points = None
+        self.tris = None
 
     def __str__(self):
         coordsize = [len(crds) // 3 for crds in self.cords]
         return "[%d-%s][%d][%d-%s]" % (len(self.verts) // 3,
                                        '/'.join("%d" % c for c in coordsize),
-                                       len(self.loops) // 2, len(self.faces),
+                                       len(self.polys) // 2, len(self.faces),
                                        '/'.join("%d" % len(u) for u in self.uvids))
 
     def set(self, indices):
-        self.keys.clear()
-        self.faces.clear()
         for point in indices:
             ply = point.points
             key = point.group
+            self.mats.append(key)
             self.faces.append(ply)
-            self.keys.setdefault(key, []).append(ply)
 
 
 class Point3d(object):
@@ -1129,17 +1126,19 @@ def get_bitmap(chunk, uid):
                 custom = params.get_first(0x3)
                 if (custom is not None):
                     pathchunk = custom.get_first(0x1230)
+                    pathlink = custom.get_first(0x1260)
                     if (pathchunk and pathchunk.data):
                         pathstring = pathchunk.data
+                    elif (pathlink and pathlink.children):
+                        matlib = pathlink.children[0]
             elif (uid in (CORO_MTL, VRAY_MTL)):
                 for block in params.children:
                     if (block.children and get_guid(block) == 0x3333):
                         matlib = block.children[0]
-                if (matlib and matlib.data):
-                    idsize = len(matlib.data[:-4])
-                    assetid = struct.unpack('<' + 'IH' * int(idsize / 6), matlib.data[:idsize])
-                    metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
-                    pathstring = get_metadata(metaidx[0])
+        if (matlib and matlib.data):
+            idsize = len(matlib.data[:-4])
+            metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
+            pathstring = get_metadata(metaidx[0])
         return pathstring
     return None
 
@@ -1246,14 +1245,10 @@ def adjust_material(filename, search, obj, mat):
     material = None
     if (mat is not None):
         uid = get_guid(mat)
-        mtl_id = mat.get_first(0x4000)
-        tex_id = mat.get_first(0x21B0)
         if (uid == 0x0002):  # Standard
+            mtl_id = mat.get_first(0x4000)
             refs = get_references(mat)
             material = get_standard_material(refs)
-        elif (uid == 0x0200):  # Multi/Sub-Object
-            refs = get_references(mat)
-            material = adjust_material(filename, search, obj, refs[-1])
         elif (uid == VRAY_MTL):  # VRayMtl
             mtl_id = mat.get_first(0x5431)
             refs = get_reference(mat)
@@ -1266,6 +1261,11 @@ def adjust_material(filename, search, obj, mat):
         elif (uid == ARCH_MTL):  # Arch
             refs = get_references(mat)
             material = get_arch_material(refs[0])
+        elif (uid == 0x0200):  # Multi/Sub-Object
+            refs = get_references(mat)
+            for ref in refs:
+                if (ref is not None):
+                    material = adjust_material(filename, search, obj, ref)
         if (obj is not None) and (material is not None):
             texname = material.get('bitmap', None)
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
@@ -1422,9 +1422,7 @@ def draw_shape(name, mesh, faces, mat):
 
 
 def draw_map(shape, uvmap, uvcoords, uvwids):
-    uvlayer = shape.uv_layers.new(do_init=False)
-    if (uvmap > 1):
-        uvlayer.name = 'UVMap_%d' % (uvlayer.name, uvmap)
+    shape.uv_layers.new(do_init=False)
     coords = [co for i, co in enumerate(uvcoords) if i % 3 in (0, 1)]
     uvcord = list(zip(coords[0::2], coords[1::2]))
     uvloops = tuple(uv for uvws in uvwids for uvid in uvws for uv in uvcord[uvid])
@@ -1449,20 +1447,9 @@ def create_shape(context, settings, node, mesh, mat):
     context.view_layer.active_layer_collection.collection.objects.link(obj)
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
+        if (len(mesh.mats) > 0):
+            obj.data.polygons.foreach_set("material_index", mesh.mats)
     object_list.append(obj)
-    if (len(mesh.keys) > 0):
-        for idx, (key, part) in enumerate(mesh.keys.items()):
-            partname = '%s_%d' % (name, key)
-            meshpart = draw_shape(partname, mesh, part, mat)
-            if (idx < len(mesh.maps) and 'UV' in obtypes):
-                meshpart = draw_map(meshpart, mesh.maps[idx], mesh.cords[idx], mesh.uvids[idx])
-            meshpart.validate()
-            meshpart.update()
-            partobj = bpy.data.objects.new(partname, meshpart)
-            context.view_layer.active_layer_collection.collection.objects.link(partobj)
-            if ('MATERIAL' in obtypes):
-                adjust_material(filename, search, partobj, mat)
-            object_list.append(partobj)
     return object_list
 
 
@@ -1487,8 +1474,6 @@ def create_editable_poly(context, settings, node, msh, mat):
                 mesh.polys = get_poly_loops(child)
             elif (child.types == 0x010A):
                 mesh.tris = calc_point_float(child.data)
-            elif (child.types == 0x0114):
-                vertidx = get_long(child.data, 0)[0]
             elif (child.types == 0x0118):
                 mesh.faces.append(get_face_chunks(child))
             elif (child.types == 0x011A):
@@ -1500,7 +1485,7 @@ def create_editable_poly(context, settings, node, msh, mat):
             elif (child.types == 0x012B):
                 mesh.uvids.append(get_poly_data(child))
             elif (child.types == 0x0310):
-                mesh.loops = get_poly_data(child)
+                mesh.polys = get_poly_data(child)
         if (mesh.points is not None):
             mesh.set(mesh.points)
             created += create_shape(context, settings, node, mesh, mat)
