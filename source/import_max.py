@@ -1273,18 +1273,21 @@ def adjust_material(filename, search, obj, mat):
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
-            matShader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
-            matShader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
-            matShader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
-            matShader.specular = objMaterial.specular_intensity = material.get('glossines', 0.5)
-            matShader.roughness = objMaterial.roughness = 1.0 - material.get('shinines', 0.6)
-            matShader.metallic = objMaterial.metallic = material.get('metallic', 0)
-            matShader.emission_color = material.get('emissive', (0, 0, 0))
-            matShader.ior = material.get('refraction', 1.45)
+            shader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
+            shader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
+            shader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
+            shader.specular = objMaterial.specular_intensity = material.get('glossines', 0.5)
+            shader.roughness = objMaterial.roughness = 1.0 - material.get('shinines', 0.6)
+            shader.metallic = objMaterial.metallic = material.get('metallic', 0)
+            shader.emission_color = material.get('emissive', (0, 0, 0))
+            shader.ior = material.get('refraction', 1.45)
             if texname is not None:
+                diffuse = shader.base_color_texture
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
                 if image is not None:
-                    matShader.base_color_texture.image = image
+                    diffuse.image = image
+                    shader.material.node_tree.links.new(diffuse.node_image.outputs[1], shader.node_principled_bsdf.inputs[4])
+                    shader.material.blend_method = 'BLEND'
 
 
 def get_bezier_floats(pos):
