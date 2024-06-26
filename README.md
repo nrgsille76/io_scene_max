@@ -11,7 +11,7 @@
 &nbsp;&nbsp; `File --> Import/Export --> Autodesk MAX (.max)`  
 
 **Version**  
-&nbsp;&nbsp; 1.4.6  
+&nbsp;&nbsp; 1.4.7  
 
 **Authors**  
 &nbsp;&nbsp; Sebastian Schrand, Jens M. Plonka, Philippe Lagadec,  
