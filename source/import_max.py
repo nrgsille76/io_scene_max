@@ -726,7 +726,7 @@ class ChunkReader(object):
                 long, step = get_long(data, step)
                 if (long in (0xB000000, 0xA040000, 0x8000001E)):
                     data = zlib.decompress(data, zlib.MAX_WBITS | 32)
-            elif (superid == 0x000B):
+            elif (superid == (0xA, 0xB)):
                 chunk = primReader(superid, root, level, 1, len(data), data)
                 chunk.set_meta_data(data)
                 return [chunk]
@@ -865,7 +865,7 @@ def get_dll(chunk):
 
 def get_metadata(index):
     global META_DATA
-    pathdata = META_DATA[0].data
+    pathdata = META_DATA[0].data if META_DATA else None
     if pathdata:
         pathname = pathdata.get(index)
         return pathname[0][1] if pathname else None
@@ -1614,9 +1614,9 @@ def make_scene(context, settings, mscale, transform, parent):
 
 def read_scene(context, maxfile, settings, mscale, transform):
     global SCENE_LIST, META_DATA
+    metasid = max(entry.sid for entry in maxfile.direntries if entry is not None)
     SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
-    META_DATA = (read_chunks(maxfile, maxfile.direntries[0xB].name, superId=11) if
-                 any(entry and entry.sid == 0xB for entry in maxfile.direntries) else [])
+    META_DATA = read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
     make_scene(context, settings, mscale, transform, SCENE_LIST[0])
     # For debug: Print directory
     # print('Directory', maxfile.direntries[0].kids_dict.keys())
