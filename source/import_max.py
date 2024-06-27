@@ -603,12 +603,13 @@ class ByteArrayChunk(MaxChunk):
         metadict = {}
         matkey = False
         try:
-            metadata = list(zip(*[iter(data.split(b'\x00\x00\x00'))]*2))
+            mdatazip = list(zip(*[iter(data.split(b'\x00\x00\x00'))]*2))
+            metadata = list(filter(lambda tpl: b'' not in tpl, mdatazip))
             for mdata in metadata:
                 header = mdata[0]
                 imgkey = header[-1]
                 mtitle = b''.join(mdata[1].split(b'\x00')).decode('UTF-8')
-                if (len(header) > 1):
+                if (len(header) > ROOT_STORE):
                     size = len(header[:-ROOT_STORE])
                     head = struct.unpack('<' + 'IH' * int(size / 6), header[:size])
                     meta = get_longs(header, size, len(header[size:]) // 4)[0]
@@ -1287,7 +1288,7 @@ def adjust_material(filename, search, obj, mat):
                 if image is not None:
                     diffuse.image = image
                     shader.material.node_tree.links.new(diffuse.node_image.outputs[1], shader.node_principled_bsdf.inputs[4])
-                    shader.material.blend_method = 'BLEND'
+                    shader.material.blend_method = 'HASHED'
 
 
 def get_bezier_floats(pos):
