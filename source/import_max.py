@@ -1132,7 +1132,6 @@ def get_bitmap(chunk):
                     matlib = pathlink.children[0]
         if (matlib and matlib.data):
             idsize = len(matlib.data[:-4])
-            assetid = struct.unpack('<' + 'IH' * int(idsize / 6), matlib.data[:idsize])
             metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
             pathstring = get_metadata(metaidx[0])
         return pathstring
