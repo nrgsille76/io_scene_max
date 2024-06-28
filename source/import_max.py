@@ -1117,27 +1117,22 @@ def get_property(properties, idx):
     return None
 
 
-def get_bitmap(chunk, uid):
-    if (chunk):
+def get_bitmap(chunk):
+    if (chunk is not None):
         pathstring = matlib = None
         parameters = get_references(chunk)
         if (len(parameters) >= 2):
-            params = parameters[1]
-            if (uid == 0x2):
-                custom = params.get_first(0x3)
-                if (custom is not None):
-                    pathchunk = custom.get_first(0x1230)
-                    pathlink = custom.get_first(0x1260)
-                    if (pathchunk and pathchunk.data):
-                        pathstring = pathchunk.data
-                    elif (pathlink and pathlink.children):
-                        matlib = pathlink.children[0]
-            elif (uid in (CORO_MTL, VRAY_MTL)):
-                for block in params.children:
-                    if (block.children and get_guid(block) == 0x3333):
-                        matlib = block.children[0]
+            custom = parameters[1].get_first(0x3)
+            if (custom is not None):
+                pathchunk = custom.get_first(0x1230)
+                pathlink = custom.get_first(0x1260)
+                if (pathchunk and pathchunk.data):
+                    pathstring = pathchunk.data
+                elif (pathlink and pathlink.children):
+                    matlib = pathlink.children[0]
         if (matlib and matlib.data):
             idsize = len(matlib.data[:-4])
+            assetid = struct.unpack('<' + 'IH' * int(idsize / 6), matlib.data[:idsize])
             metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
             pathstring = get_metadata(metaidx[0])
         return pathstring
@@ -1173,45 +1168,61 @@ def get_parameter(colors, fmt):
 
 
 def get_standard_material(refs):
-    material = None
+    material = bitmap = None
     try:
         if (len(refs) > 2):
             texmap = refs[1]
             colors = refs[2]
             material = Material()
-            parameters = get_references(colors)[0]
-            texture = get_bitmap(get_reference(texmap).get(3), 0x2)
-            if texture:
-                material.set('bitmap', Path(texture).name)
-            material.set('ambient', get_color(parameters, 0x00))
-            material.set('diffuse', get_color(parameters, 0x01))
-            material.set('specular', get_color(parameters, 0x02))
-            material.set('emissive', get_color(parameters, 0x08))
-            material.set('shinines', get_value(parameters, 0x0B))
+            parameter = get_references(colors)[0]
+            bitmap = get_bitmap(get_reference(texmap).get(3))
+            material.set('ambient', get_color(parameter, 0x00))
+            material.set('diffuse', get_color(parameter, 0x01))
+            material.set('specular', get_color(parameter, 0x02))
+            material.set('shinines', get_value(parameter, 0x0B))
+            material.set('emissive', get_color(parameter, 0x08))
             parablock = refs[4]  # ParameterBlock2
             material.set('glossines', get_value(parablock, 0x02))
             material.set('metallic', get_value(parablock, 0x05))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
     except Exception as exc:
-        print('Error:', exc)
+        print("\t'StandardMtl' Error:", exc)
     return material
 
 
-def get_vray_material(vry):
+def get_vray_material(vray):
     material = Material()
     try:
-        parameters = vry[1]
-        texture = get_bitmap(vry.get(7), VRAY_MTL)
-        if texture:
-            material.set('bitmap', Path(texture).name)
-        material.set('diffuse', get_color(parameters, 0x01))
-        material.set('specular', get_color(parameters, 0x02))
-        material.set('shinines', get_value(parameters, 0x03))
-        material.set('refraction', get_value(parameters, 0x09))
-        material.set('emissive', get_color(parameters, 0x17))
-        material.set('glossines', get_value(parameters, 0x18))
-        material.set('metallic', get_value(parameters, 0x19))
+        parameter = vray.get(1)
+        bitmap = get_bitmap(vray.get(7))
+        roughmap = get_bitmap(vray.get(8))
+        specmap = get_bitmap(vray.get(11))
+        transmap = get_bitmap(vray.get(19))
+        normal = get_references(vray.get(10))
+        material.set('diffuse', get_color(parameter, 0x01))
+        material.set('specular', get_color(parameter, 0x02))
+        material.set('shinines', get_value(parameter, 0x03))
+        material.set('emissive', get_color(parameter, 0x17))
+        material.set('glossines', get_value(parameter, 0x18))
+        material.set('metallic', get_value(parameter, 0x19))
+        material.set('refraction', get_value(parameter, 0x09))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
+        if (roughmap is not None):
+            material.set('roughmap', Path(roughmap).name)
+        if (specmap is not None):
+            material.set('specmap', Path(specmap).name)
+        if (transmap is not None):
+            material.set('transmap', Path(transmap).name)
+        if (normal and len(normal) > 0):
+            material.set('strength', get_value(parameter, 0x06))
+            refs = get_references(normal[0])
+            normalmap = get_bitmap(refs[0])
+            if (normalmap is not None):
+                material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
-        print('Error:', exc)
+        print("\t'VrayMtl' Error:", exc)
     return material
 
 
@@ -1219,14 +1230,38 @@ def get_corona_material(mtl):
     material = Material()
     try:
         material = Material()
-        cor = mtl[0].children
-        bitmap = get_bitmap(mtl[0], CORO_MTL)
-        material.set('diffuse', get_parameter(cor[3], 0x1))
-        material.set('specular', get_parameter(cor[4], 0x1))
-        material.set('emissive', get_parameter(cor[8], 0x1))
-        material.set('glossines', get_parameter(cor[9], 0x2))
-    except:
-        pass
+        corona = mtl[0].children
+        parameter = get_reference(mtl[0])
+        bitmap = get_bitmap(parameter.get(0))
+        roughmap = get_bitmap(parameter.get(1))
+        specmap = get_bitmap(parameter.get(2))
+        transmap = get_bitmap(parameter.get(5))
+        normal = get_references(parameter.get(6))
+        material.set('diffuse', get_parameter(corona[0x03], 1))
+        material.set('specular', get_parameter(corona[0x04], 1))
+        material.set('shinines', get_parameter(corona[0x3E], 2))
+        material.set('emissive', get_parameter(corona[0x08], 1))
+        material.set('glossines', get_parameter(corona[0x09], 2))
+        material.set('metallic', get_parameter(corona[0x0D], 2))
+        material.set('refraction', get_parameter(corona[0x41], 2))
+        material.set('opacity', get_parameter(corona[0x0B], 2))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
+        if (roughmap is not None):
+            material.set('roughmap', Path(roughmap).name)
+        if (specmap is not None):
+            material.set('specmap', Path(specmap).name)
+        if (transmap is not None):
+            material.set('transmap', Path(transmap).name)
+        if (normal and len(normal) > 0):
+            values = normal[0].children
+            refs = get_references(normal[0])
+            normalmap = get_bitmap(refs[0])
+            material.set('strength', get_parameter(values[0x03], 2))
+            if (normalmap is not None):
+                material.set('normalmap', Path(normalmap).name)
+    except Exception as exc:
+        print("\t'CoronaMtl' Error:", exc)
     return material
 
 
@@ -1255,9 +1290,8 @@ def adjust_material(filename, search, obj, mat):
             refs = get_reference(mat)
             material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
-            refs = get_references(mat)
             mtl_id = mat.get_first(0x0FA0)
-            texrefs = get_references(refs[0])
+            refs = get_references(mat)
             material = get_corona_material(refs)
         elif (uid == ARCH_MTL):  # Arch
             refs = get_references(mat)
@@ -1268,7 +1302,6 @@ def adjust_material(filename, search, obj, mat):
                 if (ref is not None):
                     material = adjust_material(filename, search, obj, ref)
         if (obj is not None) and (material is not None):
-            texname = material.get('bitmap', None)
             matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
@@ -1278,17 +1311,41 @@ def adjust_material(filename, search, obj, mat):
             shader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             shader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
             shader.specular = objMaterial.specular_intensity = material.get('glossines', 0.5)
+            shader.alpha = objMaterial.diffuse_color[3] = 1.0 - material.get('opacity', 0.0)
             shader.roughness = objMaterial.roughness = 1.0 - material.get('shinines', 0.6)
             shader.metallic = objMaterial.metallic = material.get('metallic', 0)
             shader.emission_color = material.get('emissive', (0, 0, 0))
             shader.ior = material.get('refraction', 1.45)
-            if texname is not None:
-                diffuse = shader.base_color_texture
+            texname = material.get('bitmap', None)
+            roughmap = material.get('roughmap', None)
+            specmap = material.get('specmap', None)
+            transmap = material.get('transmap', None)
+            normalmap = material.get('normalmap', None)
+            if (texname is not None):
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
-                if image is not None:
-                    diffuse.image = image
-                    shader.material.node_tree.links.new(diffuse.node_image.outputs[1], shader.node_principled_bsdf.inputs[4])
-                    shader.material.blend_method = 'HASHED'
+                if (image is not None):
+                    shader.base_color_texture.image = image
+            if (roughmap is not None):
+                image = load_image(str(roughmap), dirname, place_holder=False, recursive=search, check_existing=True)
+                if (image is not None):
+                    shader.roughness_texture.image = image
+            if (specmap is not None):
+                image = load_image(str(specmap), dirname, place_holder=False, recursive=search, check_existing=True)
+                if (image is not None):
+                    shader.specular_texture.image = image
+            if (normalmap is not None):
+                shader.normalmap_strength = material.get('strength', 0.8)
+                image = load_image(str(normalmap), dirname, place_holder=False, recursive=search, check_existing=True)
+                if (image is not None):
+                    shader.normalmap_texture.image = image
+            if (transmap is not None):
+                image = load_image(str(transmap), dirname, place_holder=False, recursive=search, check_existing=True)
+                if (image is not None):
+                    shader.alpha_texture.image = image
+            elif (texname and shader.node_principled_bsdf.inputs[0].is_linked):
+                texture = shader.base_color_texture.node_image
+                shader.material.node_tree.links.new(texture.outputs[1], shader.node_principled_bsdf.inputs[4])
+            shader.material.blend_method = 'HASHED'
 
 
 def get_bezier_floats(pos):
