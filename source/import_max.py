@@ -559,7 +559,7 @@ class ImportMaxFile:
 class MaxChunk(object):
     """Representing a chunk of a .max file."""
 
-    __slots__ = ("superid", "types", "level", "number", "size", "data")
+    __slots__ = "superid", "types", "level", "number", "size", "data"
 
     def __init__(self, superid, types, level, number, size, data=None):
         self.superid = superid
@@ -597,7 +597,7 @@ class ByteArrayChunk(MaxChunk):
         except:
             self.data = data.decode('UTF-8', 'replace')
         finally:
-            self.data = data.decode('UTF-16LE', 'replace')
+            self.data = data.decode('UTF-16LE', 'ignore')
 
     def set_meta_data(self, data):
         metadict = {}
@@ -608,7 +608,7 @@ class ByteArrayChunk(MaxChunk):
             for mdata in metadata:
                 header = mdata[0]
                 imgkey = header[-1]
-                mtitle = b''.join(mdata[1].split(b'\x00')).decode('UTF-8')
+                mtitle = b''.join(mdata[1].split(b'\x00')).decode('UTF-8', 'ignore')
                 if (len(header) > ROOT_STORE):
                     size = len(header[:-ROOT_STORE])
                     head = struct.unpack('<' + 'IH' * int(size / 6), header[:size])
@@ -680,7 +680,7 @@ class ContainerChunk(MaxChunk):
         self.superid = superid
 
     def __str__(self):
-        return "%s[%4x]%04X %X" % ("" * self.level, self.number, self.types, self.superid)
+        return "%s[%4x]%04X" % ("" * self.level, self.number, self.types)
 
     def get_first(self, types):
         for child in self.children:
@@ -702,7 +702,7 @@ class SceneChunk(ContainerChunk):
         self.superid = 0x2
 
     def __str__(self):
-        return "%s[%4x]%s %X" % ("" * self.level, self.number, get_cls_name(self), self.superid)
+        return "%s[%4x]%s" % ("" * self.level, self.number, get_cls_name(self))
 
     def set_data(self, data):
         # print('Scene', "%s %s" % (hex(self.types), self))
@@ -1147,8 +1147,8 @@ def get_color(colors, idx):
     return None
 
 
-def get_value(colors, idx):
-    prop = get_property(colors, idx)
+def get_value(value, idx):
+    prop = get_property(value, idx)
     if (prop is not None):
         siz = len(prop.data) - 4
         val, offset = get_float(prop.data, siz)
@@ -1156,18 +1156,18 @@ def get_value(colors, idx):
     return None
 
 
-def get_parameter(colors, fmt):
+def get_parameter(values, fmt):
     if (fmt == 0x1):
-        siz = len(colors.data) - 12
-        para, offset = get_floats(colors.data, siz, 3)
+        siz = len(values.data) - 12
+        para, offset = get_floats(values.data, siz, 3)
     else:
-        siz = len(colors.data) - 4
-        para, offset = get_float(colors.data, siz)
+        siz = len(values.data) - 4
+        para, offset = get_float(values.data, siz)
     return para
 
 
 def get_standard_material(refs):
-    material = bitmap = None
+    material = None
     try:
         if (len(refs) > 2):
             texmap = refs[1]
@@ -1175,6 +1175,8 @@ def get_standard_material(refs):
             material = Material()
             parameter = get_references(colors)[0]
             bitmap = get_bitmap(get_reference(texmap).get(3))
+            shinmap = get_bitmap(get_reference(texmap).get(17))
+            transmap = get_bitmap(get_reference(texmap).get(13))
             material.set('ambient', get_color(parameter, 0x00))
             material.set('diffuse', get_color(parameter, 0x01))
             material.set('specular', get_color(parameter, 0x02))
@@ -1183,8 +1185,14 @@ def get_standard_material(refs):
             parablock = refs[4]  # ParameterBlock2
             material.set('glossines', get_value(parablock, 0x02))
             material.set('metallic', get_value(parablock, 0x05))
-        if (bitmap is not None):
-            material.set('bitmap', Path(bitmap).name)
+            material.set('refraction', get_value(parablock, 0x06))
+            material.set('opacity', get_value(parablock, 0x01))
+            if (bitmap is not None):
+                material.set('bitmap', Path(bitmap).name)
+            if (shinmap is not None):
+                material.set('shinmap', Path(shinmap).name)
+            if (transmap is not None):
+                material.set('transmap', Path(transmap).name)
     except Exception as exc:
         print("\t'StandardMtl' Error:", exc)
     return material
@@ -1195,23 +1203,23 @@ def get_vray_material(vray):
     try:
         parameter = vray.get(1)
         bitmap = get_bitmap(vray.get(7))
-        roughmap = get_bitmap(vray.get(8))
-        specmap = get_bitmap(vray.get(11))
+        shinmap = get_bitmap(vray.get(8))
+        glossmap = get_bitmap(vray.get(11))
         transmap = get_bitmap(vray.get(19))
         normal = get_references(vray.get(10))
         material.set('diffuse', get_color(parameter, 0x01))
         material.set('specular', get_color(parameter, 0x02))
         material.set('shinines', get_value(parameter, 0x03))
-        material.set('emissive', get_color(parameter, 0x17))
-        material.set('glossines', get_value(parameter, 0x18))
+        material.set('emissive', get_color(parameter, 0x33))
+        material.set('glossines', get_value(parameter, 0x06))
         material.set('metallic', get_value(parameter, 0x19))
         material.set('refraction', get_value(parameter, 0x09))
         if (bitmap is not None):
             material.set('bitmap', Path(bitmap).name)
-        if (roughmap is not None):
-            material.set('roughmap', Path(roughmap).name)
-        if (specmap is not None):
-            material.set('specmap', Path(specmap).name)
+        if (shinmap is not None):
+            material.set('shinmap', Path(shinmap).name)
+        if (glossmap is not None):
+            material.set('glossmap', Path(glossmap).name)
         if (transmap is not None):
             material.set('transmap', Path(transmap).name)
         if (normal and len(normal) > 0):
@@ -1232,8 +1240,8 @@ def get_corona_material(mtl):
         corona = mtl[0].children
         parameter = get_reference(mtl[0])
         bitmap = get_bitmap(parameter.get(0))
-        roughmap = get_bitmap(parameter.get(1))
-        specmap = get_bitmap(parameter.get(2))
+        shinmap = get_bitmap(parameter.get(1))
+        glossmap = get_bitmap(parameter.get(2))
         transmap = get_bitmap(parameter.get(5))
         normal = get_references(parameter.get(6))
         material.set('diffuse', get_parameter(corona[0x03], 1))
@@ -1242,14 +1250,14 @@ def get_corona_material(mtl):
         material.set('emissive', get_parameter(corona[0x08], 1))
         material.set('glossines', get_parameter(corona[0x09], 2))
         material.set('metallic', get_parameter(corona[0x0D], 2))
-        material.set('refraction', get_parameter(corona[0x41], 2))
-        material.set('opacity', get_parameter(corona[0x0B], 2))
+        material.set('refraction', get_parameter(corona[0x40], 2))
+        material.set('opacity', 1.0 - get_parameter(corona[0x0B], 2))
         if (bitmap is not None):
             material.set('bitmap', Path(bitmap).name)
-        if (roughmap is not None):
-            material.set('roughmap', Path(roughmap).name)
-        if (specmap is not None):
-            material.set('specmap', Path(specmap).name)
+        if (shinmap is not None):
+            material.set('shinmap', Path(shinmap).name)
+        if (glossmap is not None):
+            material.set('glossmap', Path(glossmap).name)
         if (transmap is not None):
             material.set('transmap', Path(transmap).name)
         if (normal and len(normal) > 0):
@@ -1310,26 +1318,26 @@ def adjust_material(filename, search, obj, mat):
             shader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             shader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
             shader.specular = objMaterial.specular_intensity = material.get('glossines', 0.5)
-            shader.alpha = objMaterial.diffuse_color[3] = 1.0 - material.get('opacity', 0.0)
             shader.roughness = objMaterial.roughness = 1.0 - material.get('shinines', 0.6)
-            shader.metallic = objMaterial.metallic = material.get('metallic', 0)
-            shader.emission_color = material.get('emissive', (0, 0, 0))
+            shader.alpha = objMaterial.diffuse_color[3] = material.get('opacity', 1.0)
+            shader.metallic = objMaterial.metallic = material.get('metallic', 0.0)
+            shader.emission_color = material.get('emissive', (0.0, 0.0, 0.0))
             shader.ior = material.get('refraction', 1.45)
             texname = material.get('bitmap', None)
-            roughmap = material.get('roughmap', None)
-            specmap = material.get('specmap', None)
+            shinmap = material.get('shinmap', None)
+            glossmap = material.get('glossmap', None)
             transmap = material.get('transmap', None)
             normalmap = material.get('normalmap', None)
             if (texname is not None):
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
                 if (image is not None):
                     shader.base_color_texture.image = image
-            if (roughmap is not None):
-                image = load_image(str(roughmap), dirname, place_holder=False, recursive=search, check_existing=True)
+            if (shinmap is not None):
+                image = load_image(str(shinmap), dirname, place_holder=False, recursive=search, check_existing=True)
                 if (image is not None):
                     shader.roughness_texture.image = image
-            if (specmap is not None):
-                image = load_image(str(specmap), dirname, place_holder=False, recursive=search, check_existing=True)
+            if (glossmap is not None):
+                image = load_image(str(glossmap), dirname, place_holder=False, recursive=search, check_existing=True)
                 if (image is not None):
                     shader.specular_texture.image = image
             if (normalmap is not None):
@@ -1338,13 +1346,16 @@ def adjust_material(filename, search, obj, mat):
                 if (image is not None):
                     shader.normalmap_texture.image = image
             if (transmap is not None):
-                image = load_image(str(transmap), dirname, place_holder=False, recursive=search, check_existing=True)
-                if (image is not None):
-                    shader.alpha_texture.image = image
-            elif (texname and shader.node_principled_bsdf.inputs[0].is_linked):
-                texture = shader.base_color_texture.node_image
-                shader.material.node_tree.links.new(texture.outputs[1], shader.node_principled_bsdf.inputs[4])
-            shader.material.blend_method = 'HASHED'
+                if (transmap == texname and shader.node_principled_bsdf.inputs[0].is_linked):
+                    imgwrap = shader.base_color_texture.node_image
+                    imgwrap.image.alpha_mode = 'CHANNEL_PACKED'
+                    shader.material.node_tree.links.new(imgwrap.outputs[1], shader.node_principled_bsdf.inputs[4])
+                else:
+                    image = load_image(str(transmap), dirname, place_holder=False, recursive=search, check_existing=True)
+                    if (image is not None):
+                        shader.alpha_texture.image = image
+            if (transmap or shader.node_principled_bsdf.inputs[4].default_value < 1.0):
+                shader.material.blend_method = 'HASHED'
 
 
 def get_bezier_floats(pos):
@@ -1459,7 +1470,7 @@ def adjust_matrix(obj, node):
     return plc
 
 
-def draw_shape(name, mesh, faces, mat):
+def draw_shape(name, mesh, faces):
     data = []
     loopstart = []
     looplines = loop = 0
@@ -1481,7 +1492,7 @@ def draw_shape(name, mesh, faces, mat):
     return shape
 
 
-def draw_map(shape, uvmap, uvcoords, uvwids):
+def draw_map(shape, uvcoords, uvwids):
     shape.uv_layers.new(do_init=False)
     coords = [co for i, co in enumerate(uvcoords) if i % 3 in (0, 1)]
     uvcord = list(zip(coords[0::2], coords[1::2]))
@@ -1498,9 +1509,11 @@ def create_shape(context, settings, node, mesh, mat):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    meshobject = draw_shape(name, mesh, mesh.faces, mat)
+    meshobject = draw_shape(name, mesh, mesh.faces)
     if ('UV' in obtypes and mesh.maps):
-        meshobject = draw_map(meshobject, 0, mesh.cords[0], mesh.uvids[0])
+        for idx, uvm in enumerate(mesh.maps):
+            select = idx if len(mesh.cords[idx]) <= len(mesh.verts) else 0
+        meshobject = draw_map(meshobject, mesh.cords[select], mesh.uvids[select])
     meshobject.validate()
     meshobject.update()
     obj = bpy.data.objects.new(name, meshobject)
@@ -1562,17 +1575,17 @@ def create_editable_mesh(context, settings, node, msh, mat):
     if (meshchunk):
         editmesh = Mesh3d()
         vertex_chunk = meshchunk.get_first(0x0914)
-        clsid_chunk = meshchunk.get_first(0x0912)
-        coord_chunk = meshchunk.get_first(0x2394)
-        uvwid_chunk = meshchunk.get_first(0x2396)
-        uvkey_chunk = meshchunk.get_first(0x2398)
-        if (vertex_chunk and clsid_chunk):
+        faceid_chunk = meshchunk.get_first(0x0912)
+        if (vertex_chunk and faceid_chunk):
             editmesh.verts = get_point_array(vertex_chunk.data)
-            editmesh.faces = get_mesh_polys(clsid_chunk.data)
-            if (coord_chunk and uvwid_chunk and uvkey_chunk):
-                editmesh.maps.append(get_long(uvkey_chunk.data, 0)[0])
-                editmesh.cords.append(get_point_array(coord_chunk.data))
-                editmesh.uvids.append(get_uvw_coords(uvwid_chunk))
+            editmesh.faces = get_mesh_polys(faceid_chunk.data)
+            for chunk in meshchunk.children:
+                if (chunk.types == 0x0959):
+                    editmesh.maps.append(get_long(chunk.data, 0)[0])
+                elif (chunk.types == 0x2394):
+                    editmesh.cords.append(get_point_array(chunk.data))
+                elif (chunk.types == 0x2396):
+                    editmesh.uvids.append(get_uvw_coords(chunk))
             created += create_shape(context, settings, node, editmesh, mat)
     return created
 
@@ -1663,7 +1676,7 @@ def make_scene(context, settings, mscale, transform, parent):
                 except TypeError as te:
                     print("\tTypeError: %s '%s'" % (te, pt_name))
             if obj_mtx:
-                if obj.parent and obj.parent.empty_display_type != 'SINGLE_ARROW' and obj.type != 'MESH':
+                if obj.parent and obj.parent.empty_display_type != 'SINGLE_ARROW':
                     trans_mtx = obj.parent.matrix_world @ obj_mtx
                 else:
                     trans_mtx = prt_mtx @ obj_mtx
