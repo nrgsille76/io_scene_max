@@ -875,21 +875,21 @@ def get_metadata(index):
 
 def get_guid(chunk):
     clid = get_class(chunk)
-    if (clid):
+    if (clid and clid.get_first(0x2060)):
         return clid.get_first(0x2060).data[1]
     return chunk.types
 
 
 def get_super_id(chunk):
     clid = get_class(chunk)
-    if (clid):
+    if (clid and clid.get_first(0x2060)):
         return clid.get_first(0x2060).data[2]
     return None
 
 
 def get_cls_name(chunk):
     clid = get_class(chunk)
-    if (clid):
+    if (clid and clid.get_first(0x2042)):
         cls_name = clid.get_first(0x2042).data
         try:
             return "'%s'" % (cls_name)
