@@ -99,6 +99,7 @@ object_list = []
 object_dict = {}
 parent_dict = {}
 matrix_dict = {}
+camera_target_pairs = {}
 
 
 def get_valid_name(name):
@@ -875,21 +876,21 @@ def get_metadata(index):
 
 def get_guid(chunk):
     clid = get_class(chunk)
-    if (clid and clid.get_first(0x2060)):
+    if (clid):
         return clid.get_first(0x2060).data[1]
     return chunk.types
 
 
 def get_super_id(chunk):
     clid = get_class(chunk)
-    if (clid and clid.get_first(0x2060)):
+    if (clid):
         return clid.get_first(0x2060).data[2]
     return None
 
 
 def get_cls_name(chunk):
     clid = get_class(chunk)
-    if (clid and clid.get_first(0x2042)):
+    if (clid):
         cls_name = clid.get_first(0x2042).data
         try:
             return "'%s'" % (cls_name)
@@ -1504,6 +1505,112 @@ def draw_map(shape, uvcoords, uvwids):
     return shape
 
 
+def create_matrix(prc):
+    uid = get_guid(prc)
+    mtx = mathutils.Matrix.Identity(4)
+    if (uid == 0x2005):  # Position/Rotation/Scale
+        pos = get_position(get_references(prc)[0])
+        rot = get_rotation(get_references(prc)[1])
+        scl = get_scale(get_references(prc)[2])
+        mtx = mathutils.Matrix.LocRotScale(pos, rot, scl)
+    elif (uid == 0x2006):  # Camera specific transformation
+        pos = get_position(get_references(prc)[0])
+        target = get_position(get_references(prc)[1])
+        roll = get_references(prc)[2].get_first(0x2501).data[0] if len(get_references(prc)) > 2 else 0
+        
+        forward = (target - pos).normalized()
+        up = mathutils.Vector((0, 0, 1))
+        right = forward.cross(up).normalized()
+        up = right.cross(forward).normalized()
+        
+        mtx = mathutils.Matrix((right, up, -forward)).to_4x4()
+        mtx.translation = pos
+        mtx = mtx @ mathutils.Matrix.Rotation(roll, 4, 'Z')
+    
+    return mtx
+
+
+def create_camera_object(context, name, node, msh):
+    cam_data = bpy.data.cameras.new(name=name)
+    obj = bpy.data.objects.new(name=name, object_data=cam_data)
+    context.view_layer.active_layer_collection.collection.objects.link(obj)
+    
+    # Extract transformation data
+    transform = extract_transform_data(node)
+    
+    # Apply transformation
+    if transform:
+        obj.matrix_world = transform
+    
+    camera_target_pairs[name] = None
+    return obj
+
+def extract_transform_data(node):
+    prs = node.get_first(0x0960)  # Assuming 0x0960 is the PRS (Position/Rotation/Scale) chunk
+    if prs:
+        return create_matrix(prs)
+    return None
+
+
+def create_camera_target_object(context, name, node, msh):
+    obj = bpy.data.objects.new(name=name, object_data=None)
+    obj.empty_display_type = 'SPHERE'
+    obj.empty_display_size = 0.1
+    context.view_layer.active_layer_collection.collection.objects.link(obj)
+    
+    # Extract and apply transformation data
+    transform = extract_transform_data(node)
+    if transform:
+        obj.matrix_world = transform
+    
+    camera_name = name.rsplit('.', 1)[0]
+    camera_target_pairs[camera_name] = name
+    return obj
+
+
+def setup_camera_target_relationships(context):
+    for camera_name, target_name in camera_target_pairs.items():
+        if target_name:
+            camera = bpy.data.objects.get(camera_name)
+            target = bpy.data.objects.get(target_name)
+            if camera and target:
+                # Set up track to constraint
+                constraint = camera.constraints.new(type='TRACK_TO')
+                constraint.target = target
+                constraint.track_axis = 'TRACK_NEGATIVE_Z'
+                constraint.up_axis = 'UP_Y'
+                
+                # Instead of parenting, we'll keep them separate but linked by the constraint
+                # This better preserves the original 3ds Max setup
+                # target.parent = camera  # Remove this line
+                
+                
+def create_physical_camera_object(context, name, node, msh):
+    cam_data = bpy.data.cameras.new(name=name)
+    obj = bpy.data.objects.new(name=name, object_data=cam_data)
+    context.view_layer.active_layer_collection.collection.objects.link(obj)
+    
+    # Extract transformation data
+    transform = extract_transform_data(node)
+    if transform:
+        obj.matrix_world = transform
+    
+    # Extract and set physical camera properties
+    extract_physical_camera_properties(node, cam_data)
+    
+    camera_target_pairs[name] = None
+    return obj
+
+def extract_physical_camera_properties(node, cam_data):
+    # This function would extract specific properties of the physical camera
+    # and set them on the Blender camera object
+    # For example:
+    # focal_length = extract_focal_length(node)
+    # cam_data.lens = focal_length
+    # ... (other properties)
+    pass
+                        
+
 def create_shape(context, settings, node, mesh, mat):
     filename, obtypes, search = settings
     name = node.get_first(0x0962)
@@ -1600,31 +1707,47 @@ def create_shell(context, settings, node, shell, mat):
 
 
 def create_skipable(context, node, skip):
-    name = node.get_first(0x0962)
-    if name is not None:
-        name = name.data
-        print("    skipping %s '%s'... " % (skip, name))
-    return []
+    name = get_node_name(node)
+    print(f"    Creating empty object for skipped {skip} '{name}'...")
+    empty = bpy.data.objects.new(name, None)
+    empty.empty_display_type = 'PLAIN_AXES'
+    context.view_layer.active_layer_collection.collection.objects.link(empty)
+    return [empty]
 
 
 def create_mesh(context, settings, node, msh, mat):
     created = []
     object_list.clear()
     uid = get_guid(msh)
-    if (uid == EDIT_MESH):
+    cls_name = get_cls_name(msh)
+    super_id = get_super_id(msh)
+    name = get_node_name(node)
+    
+    # print(f"Name: {name} - Class name: {cls_name}")
+    
+    if uid == 0x1002:  # Camera
+        created = [create_camera_object(context, name, node, msh)]
+    elif uid == 0x1020:  # Camera Target
+        created = [create_camera_target_object(context, name, node, msh)]
+    elif uid == 0x28e8008d46697218:  # Physical Camera
+        created = [create_physical_camera_object(context, name, node, msh)]
+    elif uid == EDIT_MESH:
         created = create_editable_mesh(context, settings, node, msh, mat)
-    elif (uid == EDIT_POLY):
+    elif uid == EDIT_POLY:
         created = create_editable_poly(context, settings, node, msh, mat)
-    elif (uid in {0x2032, 0x2033}):
+    elif uid in {0x2032, 0x2033}:
         created = create_shell(context, settings, node, msh, mat)
-    elif (uid == DUMMY and 'EMPTY' in settings[1]):
+    elif uid == DUMMY and 'EMPTY' in settings[1]:
         created = [create_dummy_object(context, node, uid)]
-    elif (uid == BIPED_OBJ and 'ARMATURE' in settings[1]):
+    elif uid == BIPED_OBJ and 'ARMATURE' in settings[1]:
         created = [create_dummy_object(context, node, uid)]
     else:
         skip = SKIPPABLE.get(uid)
-        if (skip is not None):
+        if skip is not None:
             created = create_skipable(context, node, skip)
+        else:
+            print(f"Name: {name} - Class name: {cls_name} - Unhandled")
+            created = create_skipable(context, node, "Unknown")
     return created, uid
 
 
@@ -1638,7 +1761,7 @@ def create_object(context, settings, node, transform):
     for obj in created:
         if obj.name != nodename:
             parent_dict[obj.name] = parentname
-        if (transform and obj.type == 'MESH'):
+        if transform:
             nodeloca = node.get_first(0x96A)
             noderota = node.get_first(0x96B)
             nodesize = node.get_first(0x96C)
@@ -1647,7 +1770,10 @@ def create_object(context, settings, node, transform):
             angle = mathutils.Quaternion((quats[3], quats[2], quats[1], quats[0]))
             scale = mathutils.Vector(nodesize.data[:3] if nodesize else (1.0, 1.0, 1.0))
             p_mtx = mathutils.Matrix.LocRotScale(pivot, angle, scale)
-            obj.data.transform(p_mtx)
+            if obj.type == 'MESH':
+                obj.data.transform(p_mtx)
+            else:
+                obj.matrix_world = p_mtx
     matrix_dict[nodename] = create_matrix(prs)
     parent_dict[nodename] = parentname
     return nodename, created
@@ -1699,6 +1825,19 @@ def read(context, filename, mscale, obtypes, search, transform):
     if (is_maxfile(filename)):
         settings = filename, obtypes, search
         maxfile = ImportMaxFile(filename)
+        
+        # Get and print 3ds Max units
+        units_scale, units_type, max_units_info = get_max_units(maxfile)
+        print(max_units_info)
+        
+        # Get and print current Blender units
+        blender_units_info = get_blender_units(context)
+        print(blender_units_info)
+        
+        # Set and print new Blender units
+        new_blender_units_info = set_blender_units(context, units_scale, units_type)
+        print(new_blender_units_info)
+        
         read_class_data(maxfile, filename)
         read_config(maxfile, filename)
         read_directory(maxfile, filename)
@@ -1707,6 +1846,82 @@ def read(context, filename, mscale, obtypes, search, transform):
         read_scene(context, maxfile, settings, mscale, transform)
     else:
         print("File seems to be no 3D Studio Max file!")
+
+
+def get_max_units(maxfile):
+    config = maxfile.openstream('Config')
+    config_data = config.read()
+    reader = ChunkReader('Config')
+    chunks = reader.get_chunks(7, config_data, 0, ContainerChunk, ByteArrayChunk)
+    
+    units_scale = 1.0
+    units_type = 'METERS'  # Default to meters
+    
+    for chunk in chunks:
+        if chunk.types == 0x0010:  # Unit settings chunk
+            scale, unit = struct.unpack('<fi', chunk.data)
+            units_scale = scale
+            if unit == 0:
+                units_type = 'INCHES'
+            elif unit == 1:
+                units_type = 'FEET'
+            elif unit == 2:
+                units_type = 'MILES'
+            elif unit == 3:
+                units_type = 'MILLIMETERS'
+            elif unit == 4:
+                units_type = 'CENTIMETERS'
+            elif unit == 5:
+                units_type = 'METERS'
+            elif unit == 6:
+                units_type = 'KILOMETERS'
+            break
+    
+    return units_scale, units_type, f"3ds Max scene units: {units_type} (scale: {units_scale})"
+
+
+def get_blender_units(context):
+    scene = context.scene
+    scale = scene.unit_settings.scale_length
+    system = scene.unit_settings.system
+    length_unit = scene.unit_settings.length_unit
+    
+    return f"Current Blender units: {length_unit} (scale: {scale}, system: {system})"
+    
+
+def set_blender_units(context, units_scale, units_type):
+    scene = context.scene
+    
+    # Set the unit scale
+    scene.unit_settings.scale_length = units_scale
+    
+    # Set the unit type
+    if units_type == 'INCHES':
+        scene.unit_settings.length_unit = 'INCHES'
+    elif units_type == 'FEET':
+        scene.unit_settings.length_unit = 'FEET'
+    elif units_type == 'MILES':
+        scene.unit_settings.length_unit = 'MILES'
+    elif units_type == 'MILLIMETERS':
+        scene.unit_settings.length_unit = 'MILLIMETERS'
+    elif units_type == 'CENTIMETERS':
+        scene.unit_settings.length_unit = 'CENTIMETERS'
+    elif units_type == 'METERS':
+        scene.unit_settings.length_unit = 'METERS'
+    elif units_type == 'KILOMETERS':
+        scene.unit_settings.length_unit = 'KILOMETERS'
+    
+    # Ensure metric is used for MILLIMETERS, CENTIMETERS, METERS, KILOMETERS
+    if units_type in ['MILLIMETERS', 'CENTIMETERS', 'METERS', 'KILOMETERS']:
+        scene.unit_settings.system = 'METRIC'
+    else:
+        scene.unit_settings.system = 'IMPERIAL'
+    
+    # Enable unit system for the scene
+    scene.unit_settings.system = 'METRIC' if units_type in ['MILLIMETERS', 'CENTIMETERS', 'METERS', 'KILOMETERS'] else 'IMPERIAL'
+    scene.unit_settings.use_separate = True
+    
+    return f"Blender units set to: {units_type} (scale: {units_scale}, system: {scene.unit_settings.system})"
 
 
 def load(operator, context, files=None, directory="", filepath="", scale_objects=1.0, use_collection=False,
@@ -1731,6 +1946,8 @@ def load(operator, context, files=None, directory="", filepath="", scale_objects
             context.scene.collection.children.link(collection)
             context.view_layer.active_layer_collection = context.view_layer.layer_collection.children[collection.name]
         read(context, os.path.join(directory, fl.name), mscale, obtypes=object_filter, search=use_image_search, transform=use_apply_matrix)
+
+    setup_camera_target_relationships(context)
 
     object_dict.clear()
     parent_dict.clear()
