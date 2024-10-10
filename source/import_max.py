@@ -62,6 +62,7 @@ BIPED_OBJ = 0x0000000000009125  # Biped Object
 BIPED_ANIM = 0x78C6B2A6B147369  # Biped SubAnim
 EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
+POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 CORO_MTL = 0x448931dd70be6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
@@ -1613,7 +1614,7 @@ def create_mesh(context, settings, node, msh, mat):
     uid = get_guid(msh)
     if (uid == EDIT_MESH):
         created = create_editable_mesh(context, settings, node, msh, mat)
-    elif (uid == EDIT_POLY):
+    elif (uid in {EDIT_POLY, POLY_MESH}):
         created = create_editable_poly(context, settings, node, msh, mat)
     elif (uid in {0x2032, 0x2033}):
         created = create_shell(context, settings, node, msh, mat)
