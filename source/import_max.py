@@ -1692,7 +1692,6 @@ def read_scene(context, maxfile, settings, mscale, transform):
     SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
     META_DATA = read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
     make_scene(context, settings, mscale, transform, SCENE_LIST[0])
-    # For debug: Print directory
     # print('Directory', maxfile.direntries[0].kids_dict.keys())
 
 
@@ -1710,7 +1709,7 @@ def read(context, filename, mscale, obtypes, search, transform):
         print("File seems to be no 3D Studio Max file!")
 
 
-def load(operator, context, files=None, directory="", filepath="", scale_objects=1.0, use_collection=False,
+def load(operator, context, files=[], directory="", filepath="", scale_objects=1.0, use_collection=False,
          use_image_search=True, object_filter=None, use_apply_matrix=True, global_matrix=None):
 
     object_dict.clear()
@@ -1721,6 +1720,10 @@ def load(operator, context, files=None, directory="", filepath="", scale_objects
     mscale = mathutils.Matrix.Scale(scale_objects, 4)
     if global_matrix is not None:
         mscale = global_matrix @ mscale
+
+    if not len(files):
+        files = [Path(filepath)]
+        directory = Path(filepath).parent
 
     if not object_filter:
         object_filter = {'MATERIAL', 'UV', 'EMPTY'}
