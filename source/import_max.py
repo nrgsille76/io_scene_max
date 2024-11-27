@@ -66,7 +66,10 @@ POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 CORO_MTL = 0x448931dd70be6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
+CYLINDER = 0x0000000000000012  # Cylinder
+SPHERE = 0x0000000000000011  # Sphere
 DUMMY = 0x0000000000876234  # Dummy
+BOX = 0x0000000000000010  # Box
 
 SKIPPABLE = {
     0x0000000000001002: 'Camera',
@@ -1465,10 +1468,9 @@ def get_matrix_mesh_material(node):
 
 
 def adjust_matrix(obj, node):
-    mtx = create_matrix(node).flatten()
-    plc = mathutils.Matrix(*mtx)
-    obj.matrix_world = plc
-    return plc
+    mtx = create_matrix(node)
+    obj.matrix_world = mtx @ obj.matrix_world.copy()
+    return mtx
 
 
 def draw_shape(name, mesh, faces):
@@ -1591,12 +1593,84 @@ def create_editable_mesh(context, settings, node, msh, mat):
     return created
 
 
-def create_shell(context, settings, node, shell, mat):
+def create_shell(context, settings, node, shell, mat, mtx):
     refs = get_references(shell)
     created = []
     if refs:
         msh = refs[-1]
-        created, uid = create_mesh(context, settings, node, msh, mat)
+        created, uid = create_mesh(context, settings, node, msh, mat, mtx)
+    return created
+
+
+def create_box(context, node, box, mat, mtx):
+    created = []
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
+    print("\tbuilding Box '%s' ..." % name)
+    parablock = get_references(box)[0]
+    try:
+        length = parablock.children[2].get_first(0x0100).data[0]
+        width = parablock.children[3].get_first(0x0100).data[0]
+        depth = parablock.children[4].get_first(0x0100).data[0]
+    except:
+        length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+        width  = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+        depth = UNPACK_BOX_DATA(parablock.children[3].data)[6]
+    height = -depth if (depth < 0) else depth
+    bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(length, width, height))
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = name
+    adjust_matrix(obj, mtx)
+    box.geometry = obj
+    created.append(obj)
+    return created
+
+
+def create_sphere(context, node, sphere, mat, mtx):
+    created = []
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
+    print("\tbuilding Sphere '%s' ..." % name)
+    parablock = get_references(sphere)[0]
+    try:
+        rd = parablock.children[2].get_first(0x0100).data[0]
+    except:
+        rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = name
+    adjust_matrix(obj, mtx)
+    sphere.geometry = obj
+    created.append(obj)
+    return created
+
+
+def create_cylinder(context, node, cylinder, mat, mtx):
+    created = []
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
+    print("\tbuilding Cylinder '%s' ..." % name)
+    parablock = get_references(cylinder)[0]
+    try:
+        rd = parablock.children[2].get_first(0x0100).data[0]
+        hg = paralock.children[3].get_first(0x0100).data[0]
+    except:
+        rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+        hg = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+    rad = -rd if (rd < 0) else rd
+    height = -hg if (hg < 0) else hg
+    bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = name
+    adjust_matrix(obj, mtx)
+    cylinder.geometry = obj
+    created.append(obj)
     return created
 
 
@@ -1608,7 +1682,7 @@ def create_skipable(context, node, skip):
     return []
 
 
-def create_mesh(context, settings, node, msh, mat):
+def create_mesh(context, settings, node, msh, mat, mtx):
     created = []
     object_list.clear()
     uid = get_guid(msh)
@@ -1616,8 +1690,14 @@ def create_mesh(context, settings, node, msh, mat):
         created = create_editable_mesh(context, settings, node, msh, mat)
     elif (uid in {EDIT_POLY, POLY_MESH}):
         created = create_editable_poly(context, settings, node, msh, mat)
+    elif (uid == BOX):
+        created = create_box(context, node, msh, mat, mtx)
+    elif (uid == SPHERE):
+        created = create_sphere(context, node, msh, mat, mtx)
+    elif (uid == CYLINDER):
+        created = create_cylinder(context, node, msh, mat, mtx)
     elif (uid in {0x2032, 0x2033}):
-        created = create_shell(context, settings, node, msh, mat)
+        created = create_shell(context, settings, node, msh, mat, mtx)
     elif (uid == DUMMY and 'EMPTY' in settings[1]):
         created = [create_dummy_object(context, node, uid)]
     elif (uid == BIPED_OBJ and 'ARMATURE' in settings[1]):
@@ -1634,7 +1714,7 @@ def create_object(context, settings, node, transform):
     nodename = get_node_name(node)
     parentname = get_node_name(parent)
     prs, msh, mat, lyr = get_matrix_mesh_material(node)
-    created, uid = create_mesh(context, settings, node, msh, mat)
+    created, uid = create_mesh(context, settings, node, msh, mat, prs)
     created = [idx for ob, idx in enumerate(created) if idx not in created[:ob]]
     for obj in created:
         if obj.name != nodename:
