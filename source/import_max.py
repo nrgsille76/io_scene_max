@@ -1610,15 +1610,15 @@ def create_box(context, node, box, mat, mtx):
     print("\tbuilding Box '%s' ..." % name)
     parablock = get_references(box)[0]
     try:
-        length = parablock.children[2].get_first(0x0100).data[0]
-        width = parablock.children[3].get_first(0x0100).data[0]
-        depth = parablock.children[4].get_first(0x0100).data[0]
+        length = get_float(parablock.children[1].data, 15)[0]
+        width = get_float(parablock.children[2].data, 15)[0]
+        depth = get_float(parablock.children[3].data, 15)[0]
     except:
         length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
         width  = UNPACK_BOX_DATA(parablock.children[2].data)[6]
         depth = UNPACK_BOX_DATA(parablock.children[3].data)[6]
     height = -depth if (depth < 0) else depth
-    bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(length, width, height))
+    bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = name
@@ -1636,7 +1636,7 @@ def create_sphere(context, node, sphere, mat, mtx):
     print("\tbuilding Sphere '%s' ..." % name)
     parablock = get_references(sphere)[0]
     try:
-        rd = parablock.children[2].get_first(0x0100).data[0]
+        rd = get_float(parablock.children[1].data, 15)[0]
     except:
         rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
@@ -1657,8 +1657,8 @@ def create_cylinder(context, node, cylinder, mat, mtx):
     print("\tbuilding Cylinder '%s' ..." % name)
     parablock = get_references(cylinder)[0]
     try:
-        rd = parablock.children[2].get_first(0x0100).data[0]
-        hg = paralock.children[3].get_first(0x0100).data[0]
+        rd = get_float(parablock.children[1].data, 15)[0]
+        hg = get_float(parablock.children[2].data, 15)[0]
     except:
         rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
         hg = UNPACK_BOX_DATA(parablock.children[2].data)[6]
