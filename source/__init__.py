@@ -63,7 +63,7 @@ class ImportMax(bpy.types.Operator, ImportHelper):
                ('ARMATURE', "Armature".rjust(11), "", 'ARMATURE_DATA', 0x10),
                ),
         description="Object types to import",
-        default={'MATERIAL', 'UV', 'EMPTY', 'ARMATURE'},
+        default={'MATERIAL', 'PRIMITIVE', 'UV', 'EMPTY', 'ARMATURE'},
     )
     use_collection: BoolProperty(
         name="Collection",
