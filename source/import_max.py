@@ -1760,17 +1760,17 @@ def create_mesh(context, settings, node, msh, mat, mtx):
         created = create_editable_mesh(context, settings, node, msh, mat)
     elif (uid in {EDIT_POLY, POLY_MESH}):
         created = create_editable_poly(context, settings, node, msh, mat)
-    elif (uid == 0x010):
+    elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
         created = create_box(context, node, msh, mat, mtx)
-    elif (uid == 0x011):
+    elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
         created = create_sphere(context, node, msh, mat, mtx)
-    elif (uid == 0x012):
+    elif (uid == 0x012 and 'PRIMITIVE' in settings[1]):
         created = create_cylinder(context, node, msh, mat, mtx)
-    elif (uid == 0x020):
+    elif (uid == 0x020 and 'PRIMITIVE' in settings[1]):
         created = create_torus(context, node, msh, mat, mtx)
-    elif (uid == CONE):
+    elif (uid == CONE and 'PRIMITIVE' in settings[1]):
         created = create_cone(context, node, msh, mat, mtx)
-    elif (uid == PLANE):
+    elif (uid == PLANE and 'PRIMITIVE' in settings[1]):
         created = create_plane(context, node, msh, mat, mtx)
     elif (uid in {0x2032, 0x2033}):
         created = create_shell(context, settings, node, msh, mat, mtx)
