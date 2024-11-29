@@ -1882,7 +1882,7 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
         directory = Path(filepath).parent
 
     if not object_filter:
-        object_filter = {'MATERIAL', 'UV', 'EMPTY'}
+        object_filter = {'MATERIAL', 'UV', 'PRIMITIVE', 'EMPTY'}
 
     default_layer = context.view_layer.active_layer_collection.collection
     for fl in files:
