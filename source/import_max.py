@@ -63,13 +63,12 @@ BIPED_ANIM = 0x78C6B2A6B147369  # Biped SubAnim
 EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
-CORO_MTL = 0x448931dd70be6506  # CoronaMtl
+CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
-CYLINDER = 0x0000000000000012  # Cylinder
-SPHERE = 0x0000000000000011  # Sphere
 DUMMY = 0x0000000000876234  # Dummy
-BOX = 0x0000000000000010  # Box
+PLANE = 0x77566F65081F1DFC  # Plane
+CONE = 0x00000000A86C23DD  # Cone
 
 SKIPPABLE = {
     0x0000000000001002: 'Camera',
@@ -1602,6 +1601,27 @@ def create_shell(context, settings, node, shell, mat, mtx):
     return created
 
 
+def create_plane(context, node, plane, mat, mtx):
+    created = []
+    name = node.get_first(TYP_NAME).data
+    print("\tbuilding Plane '%s' ..." % name)
+    parablock = get_references(plane)[0]
+    try:
+        length = get_float(parablock.children[1].data, 15)[0]
+        width = get_float(parablock.children[2].data, 15)[0]
+    except:
+        length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+        width = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+    bpy.ops.mesh.primitive_plane_add(size=1.0, scale=(width, length, 0.0))
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = str(name)
+    adjust_matrix(obj, mtx)
+    plane.geometry = obj
+    created.append(obj)
+    return created
+
+
 def create_box(context, node, box, mat, mtx):
     created = []
     name = node.get_first(0x0962)
@@ -1649,6 +1669,27 @@ def create_sphere(context, node, sphere, mat, mtx):
     return created
 
 
+def create_torus(context, node, torus, mat, mtx):
+    created = []
+    name = node.get_first(TYP_NAME).data
+    print("\tbuilding Torus '%s' ..." % name)
+    parablock = get_references(torus)[0]
+    try:
+        rd1 = get_float(parablock.children[1].data, 15)[0]
+        rd2 = get_float(parablock.children[2].data, 15)[0]
+    except:
+        rd1 = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+        rd2 = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+    bpy.ops.mesh.primitive_torus_add(major_radius=rd1, minor_radius=rd2)
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = str(name)
+    adjust_matrix(obj, mtx)
+    torus.geometry = obj
+    created.append(obj)
+    return created
+
+
 def create_cylinder(context, node, cylinder, mat, mtx):
     created = []
     name = node.get_first(0x0962)
@@ -1674,6 +1715,30 @@ def create_cylinder(context, node, cylinder, mat, mtx):
     return created
 
 
+def create_cone(context, node, cone, mat, mtx):
+    created = []
+    name = node.get_first(TYP_NAME).data
+    print("\tbuilding Cone '%s' ..." % name)
+    parablock = get_references(cone)[0]
+    try:
+        rd1 = get_float(parablock.children[1].data, 15)[0]
+        rd2 = get_float(parablock.children[2].data, 15)[0]
+        hgt = get_float(parablock.children[3].data, 15)[0]
+    except:
+        rd1 = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+        rd2 = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+        hgt = UNPACK_BOX_DATA(parablock.children[3].data)[6]
+    height = -hgt if (hgt < 0) else hgt
+    bpy.ops.mesh.primitive_cone_add(radius1=rd1, radius2=rd2, depth=height)
+    obj = context.selected_objects[0]
+    if name is not None:
+        obj.name = str(name)
+    adjust_matrix(obj, mtx)
+    cone.geometry = obj
+    created.append(obj)
+    return created
+
+
 def create_skipable(context, node, skip):
     name = node.get_first(0x0962)
     if name is not None:
@@ -1690,12 +1755,18 @@ def create_mesh(context, settings, node, msh, mat, mtx):
         created = create_editable_mesh(context, settings, node, msh, mat)
     elif (uid in {EDIT_POLY, POLY_MESH}):
         created = create_editable_poly(context, settings, node, msh, mat)
-    elif (uid == BOX):
+    elif (uid == 0x010):
         created = create_box(context, node, msh, mat, mtx)
-    elif (uid == SPHERE):
+    elif (uid == 0x011):
         created = create_sphere(context, node, msh, mat, mtx)
-    elif (uid == CYLINDER):
+    elif (uid == 0x012):
         created = create_cylinder(context, node, msh, mat, mtx)
+    elif (uid == 0x020):
+        created = create_torus(context, node, msh, mat, mtx)
+    elif (uid == CONE):
+        created = create_cone(context, node, msh, mat, mtx)
+    elif (uid == PLANE):
+        created = create_plane(context, node, msh, mat, mtx)
     elif (uid in {0x2032, 0x2033}):
         created = create_shell(context, settings, node, msh, mat, mtx)
     elif (uid == DUMMY and 'EMPTY' in settings[1]):
