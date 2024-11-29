@@ -1602,7 +1602,9 @@ def create_shell(context, settings, node, shell, mat, mtx):
 
 def create_plane(context, node, plane, mat, mtx):
     created = []
-    name = node.get_first(TYP_NAME).data
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
     print("\tbuilding Plane '%s' ..." % name)
     parablock = get_references(plane)[0]
     try:
@@ -1670,7 +1672,9 @@ def create_sphere(context, node, sphere, mat, mtx):
 
 def create_torus(context, node, torus, mat, mtx):
     created = []
-    name = node.get_first(TYP_NAME).data
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
     print("\tbuilding Torus '%s' ..." % name)
     parablock = get_references(torus)[0]
     try:
@@ -1716,7 +1720,9 @@ def create_cylinder(context, node, cylinder, mat, mtx):
 
 def create_cone(context, node, cone, mat, mtx):
     created = []
-    name = node.get_first(TYP_NAME).data
+    name = node.get_first(0x0962)
+    if name is not None:
+        name = name.data
     print("\tbuilding Cone '%s' ..." % name)
     parablock = get_references(cone)[0]
     try:
