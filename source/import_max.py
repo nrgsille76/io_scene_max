@@ -877,16 +877,20 @@ def get_metadata(index):
 
 def get_guid(chunk):
     clid = get_class(chunk)
-    if (clid and clid.get_first(0x2060)):
-        return clid.get_first(0x2060).data[1]
+    if (clid):
+        guid = clid.get_first(0x2060)
+        if guid is not None:
+            return guid.data[1]
     return chunk.types
 
 
 def get_super_id(chunk):
     clid = get_class(chunk)
-    if (clid and clid.get_first(0x2060)):
-        return clid.get_first(0x2060).data[2]
-    return None
+    if (clid):
+        suid = clid.get_first(0x2060)
+        if suid is not None:
+            return suid.data[2]
+    return 0x0
 
 
 def get_cls_name(chunk):
@@ -1581,11 +1585,11 @@ def create_editable_mesh(context, settings, node, msh, mat):
             editmesh.verts = get_point_array(vertex_chunk.data)
             editmesh.faces = get_mesh_polys(faceid_chunk.data)
             for chunk in meshchunk.children:
-                if (chunk.types == 0x0959):
+                if (chunk.types in {0x0924, 0x0959}):
                     editmesh.maps.append(get_long(chunk.data, 0)[0])
-                elif (chunk.types == 0x2394):
+                elif (chunk.types in {0x0916, 0x2394}):
                     editmesh.cords.append(get_point_array(chunk.data))
-                elif (chunk.types == 0x2396):
+                elif (chunk.types in {0x0918, 0x2396}):
                     editmesh.uvids.append(get_uvw_coords(chunk))
             created += create_shape(context, settings, node, editmesh, mat)
     return created
@@ -1605,7 +1609,6 @@ def create_plane(context, node, plane, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Plane '%s' ..." % name)
     parablock = get_references(plane)[0]
     try:
         length = get_float(parablock.children[1].data, 15)[0]
@@ -1628,7 +1631,6 @@ def create_box(context, node, box, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Box '%s' ..." % name)
     parablock = get_references(box)[0]
     try:
         length = get_float(parablock.children[1].data, 15)[0]
@@ -1654,7 +1656,6 @@ def create_sphere(context, node, sphere, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Sphere '%s' ..." % name)
     parablock = get_references(sphere)[0]
     try:
         rd = get_float(parablock.children[1].data, 15)[0]
@@ -1675,7 +1676,6 @@ def create_torus(context, node, torus, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Torus '%s' ..." % name)
     parablock = get_references(torus)[0]
     try:
         rd1 = get_float(parablock.children[1].data, 15)[0]
@@ -1698,7 +1698,6 @@ def create_cylinder(context, node, cylinder, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Cylinder '%s' ..." % name)
     parablock = get_references(cylinder)[0]
     try:
         rd = get_float(parablock.children[1].data, 15)[0]
@@ -1723,7 +1722,6 @@ def create_cone(context, node, cone, mat, mtx):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-    print("\tbuilding Cone '%s' ..." % name)
     parablock = get_references(cone)[0]
     try:
         rd1 = get_float(parablock.children[1].data, 15)[0]
@@ -1756,10 +1754,10 @@ def create_mesh(context, settings, node, msh, mat, mtx):
     created = []
     object_list.clear()
     uid = get_guid(msh)
-    if (uid == EDIT_MESH):
-        created = create_editable_mesh(context, settings, node, msh, mat)
-    elif (uid in {EDIT_POLY, POLY_MESH}):
+    if (uid in {POLY_MESH, EDIT_POLY}):
         created = create_editable_poly(context, settings, node, msh, mat)
+    elif (uid in {0x019, EDIT_MESH}):
+        created = create_editable_mesh(context, settings, node, msh, mat)
     elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
         created = create_box(context, node, msh, mat, mtx)
     elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
@@ -1813,7 +1811,7 @@ def create_object(context, settings, node, transform):
 def make_scene(context, settings, mscale, transform, parent):
     imported = []
     for chunk in parent.children:
-        if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
+        if isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x14} and get_super_id(chunk) <= 0x1:
             try:
                 imported.append(create_object(context, settings, chunk, transform))
             except Exception as exc:
