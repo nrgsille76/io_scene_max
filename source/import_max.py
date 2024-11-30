@@ -1498,11 +1498,11 @@ def draw_shape(name, mesh, faces):
 
 
 def draw_map(shape, uvcoords, uvwids):
-    shape.uv_layers.new(do_init=False)
-    coords = [co for i, co in enumerate(uvcoords) if i % 3 in (0, 1)]
-    uvcord = list(zip(coords[0::2], coords[1::2]))
-    uvloops = tuple(uv for uvws in uvwids for uvid in uvws for uv in uvcord[uvid])
     try:
+        shape.uv_layers.new(do_init=False)
+        coords = [co for i, co in enumerate(uvcoords) if i % 3 in (0, 1)]
+        uvcord = list(zip(coords[0::2], coords[1::2]))
+        uvloops = tuple(uv for uvws in uvwids for uvid in uvws for uv in uvcord[uvid])
         shape.uv_layers.active.data.foreach_set("uv", uvloops)
     except Exception as exc:
         print('\tArrayLengthMismatchError: %s' % exc)
