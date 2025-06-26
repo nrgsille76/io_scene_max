@@ -1497,15 +1497,18 @@ def draw_shape(name, mesh, faces):
     return shape
 
 
-def draw_map(shape, uvcoords, uvwids):
-    try:
-        shape.uv_layers.new(do_init=False)
+def draw_map(shape, uvmap, uvcoords, uvwids):
+    uvlayer = shape.uv_layers.new(do_init=True)
+    if (uvlayer):
+        if (uvmap > 0):
+            uvlayer.name = 'UVMap_%d' % uvmap
         coords = [co for i, co in enumerate(uvcoords) if i % 3 in (0, 1)]
         uvcord = list(zip(coords[0::2], coords[1::2]))
         uvloops = tuple(uv for uvws in uvwids for uvid in uvws for uv in uvcord[uvid])
-        shape.uv_layers.active.data.foreach_set("uv", uvloops)
-    except Exception as exc:
-        print('\tArrayLengthMismatchError: %s' % exc)
+        try:
+            shape.uv_layers.active.data.foreach_set("uv", uvloops)
+        except Exception as exc:
+            print('\tArrayLengthMismatchError: %s' % exc)
     return shape
 
 
@@ -1515,9 +1518,10 @@ def create_shape(context, settings, node, mesh, mat):
     if name is not None:
         name = name.data
     meshobject = draw_shape(name, mesh, mesh.faces)
-    for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
-        select = idx if len(mesh.cords[idx]) <= len(mesh.verts) else 0
-    meshobject = draw_map(meshobject, mesh.cords[select], mesh.uvids[select])
+    if ('UV' in obtypes and mesh.maps):
+        for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
+            select = idx if len(mesh.cords[idx]) <= len(mesh.verts) else 0
+            meshobject = draw_map(meshobject, select, mesh.cords[select], mesh.uvids[select])
     meshobject.validate()
     meshobject.update()
     obj = bpy.data.objects.new(name, meshobject)
