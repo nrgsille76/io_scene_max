@@ -1337,6 +1337,8 @@ def adjust_material(filename, search, obj, mat):
             if (texname is not None):
                 image = load_image(str(texname), dirname, place_holder=False, recursive=search, check_existing=True)
                 if (image is not None):
+                    if image.depth in {32, 16}:
+                        image.alpha_mode = 'CHANNEL_PACKED'
                     shader.base_color_texture.image = image
             if (shinmap is not None):
                 image = load_image(str(shinmap), dirname, place_holder=False, recursive=search, check_existing=True)
@@ -1354,7 +1356,6 @@ def adjust_material(filename, search, obj, mat):
             if (transmap is not None):
                 if (transmap == texname and shader.node_principled_bsdf.inputs[0].is_linked):
                     imgwrap = shader.base_color_texture.node_image
-                    imgwrap.image.alpha_mode = 'CHANNEL_PACKED'
                     shader.material.node_tree.links.new(imgwrap.outputs[1], shader.node_principled_bsdf.inputs[4])
                 else:
                     image = load_image(str(transmap), dirname, place_holder=False, recursive=search, check_existing=True)
@@ -1582,6 +1583,8 @@ def create_editable_mesh(context, settings, node, msh, mat):
     created = []
     if (meshchunk):
         editmesh = Mesh3d()
+        cnt = 0x0916 if (get_guid(msh) == 0x019) else 0x2394
+        uvm = 0x0918 if (get_guid(msh) == 0x019) else 0x2396 
         vertex_chunk = meshchunk.get_first(0x0914)
         faceid_chunk = meshchunk.get_first(0x0912)
         if (vertex_chunk and faceid_chunk):
@@ -1590,9 +1593,9 @@ def create_editable_mesh(context, settings, node, msh, mat):
             for chunk in meshchunk.children:
                 if (chunk.types in {0x0924, 0x0959}):
                     editmesh.maps.append(get_long(chunk.data, 0)[0])
-                elif (chunk.types in {0x0916, 0x2394}):
+                elif (chunk.types == cnt):
                     editmesh.cords.append(get_point_array(chunk.data))
-                elif (chunk.types in {0x0918, 0x2396}):
+                elif (chunk.types == uvm):
                     editmesh.uvids.append(get_uvw_coords(chunk))
             created += create_shape(context, settings, node, editmesh, mat)
     return created
@@ -1647,7 +1650,7 @@ def create_box(context, node, box, mat, mtx):
     bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = name
+        obj.name = str(name)
     adjust_matrix(obj, mtx)
     box.geometry = obj
     created.append(obj)
@@ -1667,7 +1670,7 @@ def create_sphere(context, node, sphere, mat, mtx):
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = name
+        obj.name = str(name)
     adjust_matrix(obj, mtx)
     sphere.geometry = obj
     created.append(obj)
@@ -1713,7 +1716,7 @@ def create_cylinder(context, node, cylinder, mat, mtx):
     bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = name
+        obj.name = str(name)
     adjust_matrix(obj, mtx)
     cylinder.geometry = obj
     created.append(obj)
@@ -1749,7 +1752,7 @@ def create_skipable(context, node, skip):
     name = node.get_first(0x0962)
     if name is not None:
         name = name.data
-        print("    skipping %s '%s'... " % (skip, name))
+        print("\tskipping %s '%s'... " % (skip, name))
     return []
 
 
@@ -1849,6 +1852,7 @@ def read_scene(context, maxfile, settings, mscale, transform):
     SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
     META_DATA = read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
     make_scene(context, settings, mscale, transform, SCENE_LIST[0])
+    # For debug: Print directory
     # print('Directory', maxfile.direntries[0].kids_dict.keys())
 
 
@@ -1878,14 +1882,15 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
     if global_matrix is not None:
         mscale = global_matrix @ mscale
 
-    if not len(files):
-        files = [Path(filepath)]
-        directory = Path(filepath).parent
-
     if not object_filter:
         object_filter = {'MATERIAL', 'UV', 'PRIMITIVE', 'EMPTY'}
 
     default_layer = context.view_layer.active_layer_collection.collection
+
+    if not len(files):
+        files = [Path(filepath)]
+        directory = Path(filepath).parent
+
     for fl in files:
         if use_collection:
             collection = bpy.data.collections.new(Path(fl.name).stem)
