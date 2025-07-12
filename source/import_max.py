@@ -1181,8 +1181,9 @@ def get_standard_material(refs):
             material = Material()
             parameter = get_references(colors)[0]
             bitmap = get_bitmap(get_reference(texmap).get(3))
-            shinmap = get_bitmap(get_reference(texmap).get(17))
+            glossmap = get_bitmap(get_reference(texmap).get(7))
             transmap = get_bitmap(get_reference(texmap).get(13))
+            normalmap = get_bitmap(get_reference(texmap).get(17))
             material.set('ambient', get_color(parameter, 0x00))
             material.set('diffuse', get_color(parameter, 0x01))
             material.set('specular', get_color(parameter, 0x02))
@@ -1195,10 +1196,12 @@ def get_standard_material(refs):
             material.set('opacity', get_value(parablock, 0x01))
             if (bitmap is not None):
                 material.set('bitmap', Path(bitmap).name)
-            if (shinmap is not None):
-                material.set('shinmap', Path(shinmap).name)
+            if (glossmap is not None):
+                material.set('glossmap', Path(glossmap).name)
             if (transmap is not None):
                 material.set('transmap', Path(transmap).name)
+            if (normalmap is not None):
+                material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'StandardMtl' Error:", exc)
     return material
@@ -1347,7 +1350,7 @@ def adjust_material(filename, search, obj, mat):
             if (glossmap is not None):
                 image = load_image(str(glossmap), dirname, place_holder=False, recursive=search, check_existing=True)
                 if (image is not None):
-                    shader.specular_texture.image = image
+                    shader.specular_tint_texture.image = image
             if (normalmap is not None):
                 shader.normalmap_strength = material.get('strength', 0.8)
                 image = load_image(str(normalmap), dirname, place_holder=False, recursive=search, check_existing=True)
