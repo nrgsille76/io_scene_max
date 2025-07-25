@@ -1524,8 +1524,7 @@ def create_shape(context, settings, node, mesh, mat):
     meshobject = draw_shape(name, mesh, mesh.faces)
     if ('UV' in obtypes and mesh.maps):
         for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
-            select = idx if len(mesh.cords[idx]) <= len(mesh.verts) else 0
-            meshobject = draw_map(meshobject, select, mesh.cords[select], mesh.uvids[select])
+            meshobject = draw_map(meshobject, idx, mesh.cords[idx], mesh.uvids[idx])
     meshobject.validate()
     meshobject.update()
     obj = bpy.data.objects.new(name, meshobject)
