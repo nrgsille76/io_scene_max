@@ -1619,9 +1619,10 @@ def create_shell(context, settings, node, shell, mat, mtx):
     return created
 
 
-def create_plane(context, node, plane, mat, mtx):
+def create_plane(context, settings, node, plane, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(plane)[0]
@@ -1635,15 +1636,18 @@ def create_plane(context, node, plane, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     plane.geometry = obj
     created.append(obj)
     return created
 
 
-def create_box(context, node, box, mat, mtx):
+def create_box(context, settings, node, box, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(box)[0]
@@ -1660,15 +1664,18 @@ def create_box(context, node, box, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     box.geometry = obj
     created.append(obj)
     return created
 
 
-def create_sphere(context, node, sphere, mat, mtx):
+def create_sphere(context, settings, node, sphere, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(sphere)[0]
@@ -1680,15 +1687,18 @@ def create_sphere(context, node, sphere, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     sphere.geometry = obj
     created.append(obj)
     return created
 
 
-def create_torus(context, node, torus, mat, mtx):
+def create_torus(context, settings, node, torus, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(torus)[0]
@@ -1702,15 +1712,18 @@ def create_torus(context, node, torus, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     torus.geometry = obj
     created.append(obj)
     return created
 
 
-def create_cylinder(context, node, cylinder, mat, mtx):
+def create_cylinder(context, settings, node, cylinder, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(cylinder)[0]
@@ -1726,15 +1739,18 @@ def create_cylinder(context, node, cylinder, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     cylinder.geometry = obj
     created.append(obj)
     return created
 
 
-def create_cone(context, node, cone, mat, mtx):
+def create_cone(context, settings, node, cone, mat, mtx):
     created = []
     name = node.get_first(0x0962)
+    filename, obtypes, search = settings
     if name is not None:
         name = name.data
     parablock = get_references(cone)[0]
@@ -1751,6 +1767,8 @@ def create_cone(context, node, cone, mat, mtx):
     obj = context.selected_objects[0]
     if name is not None:
         obj.name = str(name)
+    if ('MATERIAL' in obtypes):
+        adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
     cone.geometry = obj
     created.append(obj)
@@ -1774,17 +1792,17 @@ def create_mesh(context, settings, node, msh, mat, mtx):
     elif (uid in {0x019, EDIT_MESH}):
         created = create_editable_mesh(context, settings, node, msh, mat)
     elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
-        created = create_box(context, node, msh, mat, mtx)
+        created = create_box(context, settings, node, msh, mat, mtx)
     elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
-        created = create_sphere(context, node, msh, mat, mtx)
+        created = create_sphere(context, settings, node, msh, mat, mtx)
     elif (uid == 0x012 and 'PRIMITIVE' in settings[1]):
-        created = create_cylinder(context, node, msh, mat, mtx)
+        created = create_cylinder(context, settings, node, msh, mat, mtx)
     elif (uid == 0x020 and 'PRIMITIVE' in settings[1]):
-        created = create_torus(context, node, msh, mat, mtx)
+        created = create_torus(context, settings, node, msh, mat, mtx)
     elif (uid == CONE and 'PRIMITIVE' in settings[1]):
-        created = create_cone(context, node, msh, mat, mtx)
+        created = create_cone(context, settings, node, msh, mat, mtx)
     elif (uid == PLANE and 'PRIMITIVE' in settings[1]):
-        created = create_plane(context, node, msh, mat, mtx)
+        created = create_plane(context, settings, node, msh, mat, mtx)
     elif (uid in {0x2032, 0x2033}):
         created = create_shell(context, settings, node, msh, mat, mtx)
     elif (uid == DUMMY and 'EMPTY' in settings[1]):
