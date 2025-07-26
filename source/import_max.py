@@ -63,6 +63,7 @@ BIPED_ANIM = 0x78C6B2A6B147369  # Biped SubAnim
 EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
+LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
@@ -1309,6 +1310,12 @@ def adjust_material(filename, search, obj, mat):
             mtl_id = mat.get_first(0x0FA0)
             refs = get_references(mat)
             material = get_corona_material(refs)
+        elif (uid == LAYER_MTL):  # CoronaLayeredMtl
+            refs = get_references(mat)
+            layers = get_reference(refs[0])
+            mtl_id = mat.get_first(0x0FA0)
+            for layer in layers.values():
+                material = adjust_material(filename, search, obj, layer)
         elif (uid == ARCH_MTL):  # Arch
             refs = get_references(mat)
             material = get_arch_material(refs[0])
@@ -1907,7 +1914,6 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
     active = context.view_layer.layer_collection.children.get(default_layer.name)
     if active is not None:
         context.view_layer.active_layer_collection = active
-
     context.window.cursor_set('DEFAULT')
 
     return {'FINISHED'}
