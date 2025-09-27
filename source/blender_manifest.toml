@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 id = "io_scene_max"
 name = "Import Autodesk MAX (.max)"
-version = "1.6.7"
+version = "1.6.8"
 tagline = "Import 3DSMAX meshes & materials"
 maintainer = "NRG Sille <nrgsille@gmx.de>"
 type = "add-on"
@@ -16,3 +16,4 @@ copyright = [
 ]
 [permissions]
 files = "Import Autodesk MAX files"
+
