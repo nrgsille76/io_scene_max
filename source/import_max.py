@@ -22,6 +22,7 @@ import math
 import zlib
 import array
 import struct
+import codecs
 import mathutils
 from pathlib import Path
 from bpy_extras.image_utils import load_image
@@ -64,6 +65,8 @@ EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
+SURF_MTL = 0x62F74B4C7E73161F  # StandardSurface
+PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
@@ -872,7 +875,12 @@ def get_metadata(index):
     pathdata = META_DATA[0].data if META_DATA else None
     if pathdata:
         pathname = pathdata.get(index)
-        return pathname[0][1] if pathname else None
+        if pathname is None:
+            for key, uid in pathdata.items():
+                if index in uid[2]:
+                    return uid[0][1]
+        else:
+            return pathname[0][1]
     return pathdata
 
 
@@ -1145,6 +1153,34 @@ def get_bitmap(chunk):
     return None
 
 
+def get_texmap(chunk):
+    texpath = None
+    parameters = get_references(chunk)
+    attributes = get_references(parameters[0])
+    properties = get_references(attributes[1])
+    for prop in properties:
+        propname = next(
+            (pc.data.decode("UTF-16", "ignore") for pc in prop.children if pc.types == 1), None)
+        if propname == "filename":
+            view = next(
+                (ck.children[3] for ck in prop.children if ck.types == 3), None)
+            if view:
+                uid = get_long(view.children[0].data, 0)[0] 
+                texpath = get_metadata(uid)
+    return texpath
+
+
+def get_material_name(reference):
+    mtlname = ""
+    name_chunk = reference.get_first(0x100)
+    if name_chunk:
+        split_data = name_chunk.data.split(b"@")
+        if len(split_data) >= 2:
+            splitname = b''.join(split_data[1].split(b"\x00"))
+            mtlname = splitname.decode("UTF-8", "ignore")
+    return mtlname
+
+
 def get_color(colors, idx):
     prop = get_property(colors, idx)
     if (prop is not None):
@@ -1205,6 +1241,83 @@ def get_standard_material(refs):
                 material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'StandardMtl' Error:", exc)
+    return material
+
+
+def get_standard_surface(arnold):
+    material = None
+    try:
+        if (len(arnold) >= 2):
+            shader = arnold[1]
+            material = Material()
+            shadertree = get_references(shader)
+            for shade in shadertree:
+                socket_name = next(
+                    (sk.data.decode("UTF-16", "ignore") for sk in shade.children if sk.types == 1), None)
+                if socket_name == "base_color":
+                    socket_color = next(
+                        (get_parameter(sk, 1) for sk in shade.children if sk.types == 3), (0.0, 0.0, 0.0))
+                    material.set('diffuse', socket_color)
+                elif socket_name == "specular_color":
+                    socket_color = next(
+                        (get_parameter(sk, 1) for sk in shade.children if sk.types == 3), (0.0, 0.0, 0.0))
+                    material.set("specular", socket_color)
+                elif socket_name == "emission_color":
+                    socket_color = next(
+                        (get_parameter(sk, 1) for sk in shade.children if sk.types == 3), (0.0, 0.0, 0.0))
+                    material.set("emissive", socket_color)
+                elif socket_name == "diffuse_roughness":
+                    socket_value = next(
+                        (get_parameter(sk, 2) for sk in shade.children if sk.types == 3), 0.0)
+                    material.set("shinines", socket_value)
+                elif socket_name == "specular":
+                    socket_color = next(
+                        (get_parameter(sk, 2) for sk in shade.children if sk.types == 3), 0.0)
+                    material.set("glossines", socket_color)
+                elif socket_name == "metalness":
+                    socket_color = next(
+                        (get_parameter(sk, 2) for sk in shade.children if sk.types == 3), 0.0)
+                    material.set("metallic", socket_color)
+                elif socket_name == "opacity":
+                    socket_color = next(
+                        (get_parameter(sk, 2) for sk in shade.children if sk.types == 3), 0.0)
+                    material.set("opacity", socket_color)
+                elif socket_name == "specular_IOR":
+                    socket_color = next(
+                        (get_parameter(sk, 2) for sk in shade.children if sk.types == 3), 1.45)
+                    material.set("refraction", socket_color)
+                elif socket_name == "base_color.shader":
+                    mtldata = get_references(shade)
+                    if mtldata:
+                        bitmap = get_texmap(mtldata[0])
+                        if bitmap:
+                            material.set('bitmap', Path(bitmap).name)
+                elif socket_name == "specular_color.shader":
+                    mtldata = get_references(shade)
+                    if mtldata:
+                        specmap = get_texmap(mtldata[0])
+                        if specmap:
+                            material.set('glossmap', Path(specmap).name)
+                elif socket_name == "diffuse_roughness.shader":
+                    mtldata = get_references(shade)
+                    if mtldata:
+                        shinmap = get_texmap(mtldata[0])
+                        if shinmap:
+                            material.set('shinmap', Path(shinmap).name)
+                elif socket_name == "opacity.shader":
+                    mtldata = get_references(shade)
+                    if mtldata:
+                        opacmap = get_texmap(mtldata[0])
+                        if opacmap:
+                            material.set('transmap', Path(opacmap).name)
+                elif socket_name == "normal.shader":
+                    mtldata = get_references(shade)
+                    if mtldata:
+                        normalmap = get_texmap(mtldata[0])
+                        if normalmap:
+                            material.set('normalmap', Path(normalmap).name)
+    except Exception as exc:
+        print("\t'StandardSurface' Error:", exc)
     return material
 
 
@@ -1294,8 +1407,8 @@ def get_arch_material(ad):
 
 
 def adjust_material(filename, search, obj, mat):
+    material = mtl_id = mtl_name = None
     dirname = os.path.dirname(filename)
-    material = None
     if (mat is not None):
         uid = get_guid(mat)
         if (uid == 0x0002):  # Standard
@@ -1310,6 +1423,11 @@ def adjust_material(filename, search, obj, mat):
             mtl_id = mat.get_first(0x0FA0)
             refs = get_references(mat)
             material = get_corona_material(refs)
+        elif (uid == SURF_MTL):  # StandardSurface
+            mtl_name = get_material_name(mat)
+            refs = get_references(mat)
+            shaders = get_references(refs[0])
+            material = get_standard_surface(shaders)
         elif (uid == LAYER_MTL):  # CoronaLayeredMtl
             refs = get_references(mat)
             layers = get_reference(refs[0])
@@ -1325,7 +1443,10 @@ def adjust_material(filename, search, obj, mat):
                 if (ref is not None):
                     material = adjust_material(filename, search, obj, ref)
         if (obj is not None) and (material is not None):
-            matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
+            if mtl_name is None:
+                matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
+            else:
+                matname = mtl_name
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
@@ -1932,6 +2053,7 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
     active = context.view_layer.layer_collection.children.get(default_layer.name)
     if active is not None:
         context.view_layer.active_layer_collection = active
+
     context.window.cursor_set('DEFAULT')
 
     return {'FINISHED'}
