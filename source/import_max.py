@@ -65,7 +65,7 @@ EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
-SURF_MTL = 0x62F74B4C7E73161F  # StandardSurface
+SURF_MTL = 0x62F74B4C7E73161F  # Standard Surface
 PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
@@ -1126,7 +1126,7 @@ def get_tri_data(chunk):
 
 def get_property(properties, idx):
     for child in properties.children:
-        if (child.types & 0x100E):
+        if (child.types == 0x100E):
             if (get_short(child.data, 0)[0] == idx):
                 return child
     return None
@@ -1174,11 +1174,20 @@ def get_material_name(reference):
     mtlname = ""
     name_chunk = reference.get_first(0x100)
     if name_chunk:
-        split_data = name_chunk.data.split(b"@")
+        split_data = name_chunk.data.split(b'@')
         if len(split_data) >= 2:
-            splitname = b''.join(split_data[1].split(b"\x00"))
+            splitname = b''.join(split_data[1].split(b'\x00'))
             mtlname = splitname.decode("UTF-8", "ignore")
     return mtlname
+
+
+def get_rgb(colors, idx):
+    prop = get_property(colors, idx)
+    if (prop is not None):
+        siz = len(prop.data) - 16
+        rgb, offset = get_floats(prop.data, siz, 3)
+        return (rgb[0], rgb[1], rgb[2])
+    return None
 
 
 def get_color(colors, idx):
@@ -1321,6 +1330,40 @@ def get_standard_surface(arnold):
     return material
 
 
+def get_physical_material(phys):
+    material = None
+    try:
+        if len(phys):
+            colors = phys[0]
+            material = Material()
+            textures = get_reference(colors)
+            bitmap = get_bitmap(textures.get(1))
+            glossmap = get_bitmap(textures.get(2))
+            shinmap = get_bitmap(textures.get(4))
+            normalmap = get_bitmap(textures.get(21))
+            transmap = get_bitmap(textures.get(24))
+            material.set('diffuse', get_rgb(colors, 0x02))
+            material.set('metallic', get_value(colors, 0x05))
+            material.set('shinines', 1.0 - get_value(colors, 0x03))
+            material.set('glossines', 1.0 - get_value(colors, 0x04))
+            material.set('opacity', 1.0 - get_value(colors, 0x06))
+            material.set('specular', get_rgb(colors, 0x0A))
+            material.set('emissive', get_rgb(colors, 0x1F))
+            if (bitmap is not None):
+                material.set('bitmap', Path(bitmap).name)
+            if (glossmap is not None):
+                material.set('glossmap', Path(glossmap).name)
+            if (shinmap is not None):
+                material.set('shinmap', Path(shinmap).name)
+            if (transmap is not None):
+                material.set('transmap', Path(transmap).name)
+            if (normalmap is not None):
+                material.set('normalmap', Path(normalmap).name)
+    except Exception as exc:
+        print("\t'PhysicalMtl' Error:", exc)
+    return material
+
+
 def get_vray_material(vray):
     material = Material()
     try:
@@ -1423,6 +1466,11 @@ def adjust_material(filename, search, obj, mat):
             mtl_id = mat.get_first(0x0FA0)
             refs = get_references(mat)
             material = get_corona_material(refs)
+        elif (uid == PHYS_MTL):  # PhysicalMtl
+            id_chunk = mat.get_first(0x100)
+            mtl_name = id_chunk.get_first(0x4001).data
+            refs = get_references(mat)
+            material = get_physical_material(refs)
         elif (uid == SURF_MTL):  # StandardSurface
             mtl_name = get_material_name(mat)
             refs = get_references(mat)
