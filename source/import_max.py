@@ -49,9 +49,10 @@ ROOT_STORE = 5  # element is a root storage
 
 TYP_VALUE = {0x100, 0x2513}
 TYP_REFS = {0x1040, 0x2034, 0x2035}
+TYP_SHORT = {0x103, 0x105, 0x99C, 0x2500, 0x3005}
 TYP_LINK = {0x1020, 0x1030, 0x1050, 0x1080, 0x3002, 0x4003}
 TYP_NAME = {0x340, 0x456, 0x962, 0x10A0, 0x1010, 0x1230, 0x4001}
-TYP_ARRAY = {0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
+TYP_ARRAY = {0x102, 0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
 UNPACK_BOX_DATA = struct.Struct('<HIHHBff').unpack_from  # Index, int, 2short, byte, 2float
 INVALID_NAME = re.compile('^[0-9].*')
 
@@ -66,6 +67,7 @@ EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
 SURF_MTL = 0x62F74B4C7E73161F  # Standard Surface
+RAYT_MTL = 0x329B106E27190FF4  # RaytraceMtl
 PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
@@ -640,6 +642,8 @@ class ByteArrayChunk(MaxChunk):
             self.set(data, '<f', 0, len(data))
         elif (self.types in TYP_REFS):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
+        elif (self.types in TYP_SHORT):
+            self.set(data, '<' + 'H' * int(len(data) / 2), 0, len(data))
         elif (self.types in TYP_ARRAY):
             self.set(data, '<' + 'f' * int(len(data) / 4), 0, len(data))
         elif (self.types == 0x2510):
@@ -1364,6 +1368,35 @@ def get_physical_material(phys):
     return material
 
 
+def get_raytrace_material(rays):
+    material = None
+    try:
+        if (len(rays) >= 2):
+            colors = rays[0]
+            texmap = rays[2]
+            values = rays[5]
+            material = Material()
+            parameter = get_references(texmap)[0]
+            attributes = get_references(parameter)[0]
+            properties = get_references(attributes)
+            for color in colors.children:
+                if (color.types == 0x2) and color.get_first(0x3).data[0] == 0:
+                    material.set('ambient', color.get_first(0x102).data)
+                if (color.types == 0x2) and color.get_first(0x3).data[0] == 3:
+                    material.set('diffuse', color.get_first(0x102).data)
+                if (color.types == 0x2) and color.get_first(0x3).data[0] == 7:
+                    material.set('emissive', color.get_first(0x102).data)
+                if (color.types == 0x2) and color.get_first(0x3).data[0] == 14:
+                    material.set('specular', color.get_first(0x102).data)
+            material.set('shinines', get_value(values, 0x01))
+            material.set('metallic', get_value(values, 0x02))
+            material.set('glossines', get_value(values, 0x03))
+            material.set('opacity', 1.0 - get_value(values, 0x04))
+    except Exception as exc:
+        print("\t'RaytraceMtl' Error:", exc)
+    return material
+
+
 def get_vray_material(vray):
     material = Material()
     try:
@@ -1441,7 +1474,7 @@ def get_corona_material(mtl):
 def get_arch_material(ad):
     material = Material()
     try:
-        material.set('diffuse', get_color(ad, 0x1A))
+        material.set('diffuse', get_rgb(ad, 0x1A))
         material.set('specular', get_color(ad, 0x05))
         material.set('shinines', get_value(ad, 0x0B))
     except:
@@ -1471,6 +1504,10 @@ def adjust_material(filename, search, obj, mat):
             mtl_name = id_chunk.get_first(0x4001).data
             refs = get_references(mat)
             material = get_physical_material(refs)
+        elif (uid == RAYT_MTL):  # RaytraceMtl
+            mtl_name = get_material_name(mat)
+            refs = get_references(mat)
+            material = get_raytrace_material(refs)
         elif (uid == SURF_MTL):  # StandardSurface
             mtl_name = get_material_name(mat)
             refs = get_references(mat)
@@ -1483,6 +1520,7 @@ def adjust_material(filename, search, obj, mat):
             for layer in layers.values():
                 material = adjust_material(filename, search, obj, layer)
         elif (uid == ARCH_MTL):  # Arch
+            mtl_name = get_material_name(mat)
             refs = get_references(mat)
             material = get_arch_material(refs[0])
         elif (uid == 0x0200):  # Multi/Sub-Object
