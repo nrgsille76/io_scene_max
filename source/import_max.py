@@ -1537,7 +1537,7 @@ def adjust_material(filename, search, obj, mat):
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
             obj.data.materials.append(objMaterial)
-            shader = PrincipledBSDFWrapper(objMaterial, is_readonly=False, use_nodes=True)
+            shader = PrincipledBSDFWrapper(objMaterial, is_readonly=False)
             shader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             shader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
             shader.specular = objMaterial.specular_intensity = material.get('glossines', 0.5)
