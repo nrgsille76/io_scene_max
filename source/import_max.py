@@ -1499,7 +1499,7 @@ def adjust_material(filename, search, obj, mat):
             refs = get_reference(mat)
             material = get_vray_material(refs)
         elif (uid == VTWO_MTL):  # VRay2SidedMtl
-            mtl_name = get_material_name([mat])
+            mtl_name = get_material_name(mat)
             refs = get_reference(mat)
             material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
