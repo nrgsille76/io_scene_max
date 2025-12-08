@@ -72,6 +72,7 @@ PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
+VTWO_MTL = 0x11731B4B6066686A  # VRay2SidedMtl
 DUMMY = 0x0000000000876234  # Dummy
 PLANE = 0x77566F65081F1DFC  # Plane
 CONE = 0x00000000A86C23DD  # Cone
@@ -1424,9 +1425,10 @@ def get_vray_material(vray):
         if (normal and len(normal) > 0):
             material.set('strength', get_value(parameter, 0x06))
             refs = get_references(normal[0])
-            normalmap = get_bitmap(refs[0])
-            if (normalmap is not None):
-                material.set('normalmap', Path(normalmap).name)
+            if refs:
+                normalmap = get_bitmap(refs[0])
+                if (normalmap is not None):
+                    material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'VrayMtl' Error:", exc)
     return material
@@ -1462,10 +1464,11 @@ def get_corona_material(mtl):
         if (normal and len(normal) > 0):
             values = normal[0].children
             refs = get_references(normal[0])
-            normalmap = get_bitmap(refs[0])
-            material.set('strength', get_parameter(values[0x03], 2))
-            if (normalmap is not None):
-                material.set('normalmap', Path(normalmap).name)
+            if refs:
+                normalmap = get_bitmap(refs[0])
+                material.set('strength', get_parameter(values[0x03], 2))
+                if (normalmap is not None):
+                    material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'CoronaMtl' Error:", exc)
     return material
@@ -1493,6 +1496,10 @@ def adjust_material(filename, search, obj, mat):
             material = get_standard_material(refs)
         elif (uid == VRAY_MTL):  # VRayMtl
             mtl_id = mat.get_first(0x5431)
+            refs = get_reference(mat)
+            material = get_vray_material(refs)
+        elif (uid == VTWO_MTL):  # VRay2SidedMtl
+            mtl_name = get_material_name([mat])
             refs = get_reference(mat)
             material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
