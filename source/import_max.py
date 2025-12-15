@@ -1498,10 +1498,6 @@ def adjust_material(filename, search, obj, mat):
             mtl_id = mat.get_first(0x5431)
             refs = get_reference(mat)
             material = get_vray_material(refs)
-        elif (uid == VTWO_MTL):  # VRay2SidedMtl
-            mtl_name = get_material_name(mat)
-            refs = get_reference(mat)
-            material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
             mtl_id = mat.get_first(0x0FA0)
             refs = get_references(mat)
@@ -1520,6 +1516,10 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             shaders = get_references(refs[0])
             material = get_standard_surface(shaders)
+        elif (uid == VTWO_MTL):  # VRay2SidedMtl
+            sides = get_references(mat)
+            for side in sides:
+                material = adjust_material(filename, search, obj, side)
         elif (uid == LAYER_MTL):  # CoronaLayeredMtl
             refs = get_references(mat)
             layers = get_reference(refs[0])
