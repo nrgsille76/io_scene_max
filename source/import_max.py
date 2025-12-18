@@ -1062,12 +1062,15 @@ def get_point_array(values):
 def get_mesh_polys(data):
     count, offset = get_long(data, 0)
     polygons = []
+    mats = []
     while count > 0:
         poly, offset = get_longs(data, offset, 3)
-        offset += 8
+        edge, offset = get_long(data, offset)
+        (flag, mat), offset = get_shorts(data, offset, 2)
         polygons.append(poly)
+        mats.append(mat)
         count -= 1
-    return polygons
+    return polygons, mats
 
 
 def get_face_chunks(chunk):
@@ -1812,7 +1815,7 @@ def create_editable_mesh(context, settings, node, msh, mat):
         faceid_chunk = meshchunk.get_first(0x0912)
         if (vertex_chunk and faceid_chunk):
             editmesh.verts = get_point_array(vertex_chunk.data)
-            editmesh.faces = get_mesh_polys(faceid_chunk.data)
+            editmesh.faces, editmesh.mats = get_mesh_polys(faceid_chunk.data)
             for chunk in meshchunk.children:
                 if (chunk.types in {0x0924, 0x0959}):
                     editmesh.maps.append(get_long(chunk.data, 0)[0])
