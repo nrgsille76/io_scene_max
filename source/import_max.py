@@ -1500,7 +1500,8 @@ def adjust_material(filename, search, obj, mat):
         elif (uid == VRAY_MTL):  # VRayMtl
             mtl_id = mat.get_first(0x5431)
             refs = get_reference(mat)
-            material = get_vray_material(refs)
+            if refs:
+                material = get_vray_material(refs)
         elif (uid == CORO_MTL):  # CoronaMtl
             mtl_id = mat.get_first(0x0FA0)
             refs = get_references(mat)
