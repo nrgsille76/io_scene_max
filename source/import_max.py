@@ -73,6 +73,7 @@ CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
 ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
 VTWO_MTL = 0x11731B4B6066686A  # VRay2SidedMtl
+SHEL_MTL = 0x0000000046EE536A  # Shellac
 DUMMY = 0x0000000000876234  # Dummy
 PLANE = 0x77566F65081F1DFC  # Plane
 CONE = 0x00000000A86C23DD  # Cone
@@ -1134,7 +1135,7 @@ def get_tri_data(chunk):
 
 def get_property(properties, idx):
     for child in properties.children:
-        if (child.types == 0x100E):
+        if (child.types in {0xA, 0x100E}):
             if (get_short(child.data, 0)[0] == idx):
                 return child
     return None
@@ -1520,16 +1521,16 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             shaders = get_references(refs[0])
             material = get_standard_surface(shaders)
-        elif (uid == VTWO_MTL):  # VRay2SidedMtl
-            sides = get_references(mat)
-            for side in sides:
-                material = adjust_material(filename, search, obj, side)
         elif (uid == LAYER_MTL):  # CoronaLayeredMtl
             refs = get_references(mat)
             layers = get_reference(refs[0])
             mtl_id = mat.get_first(0x0FA0)
             for layer in layers.values():
                 material = adjust_material(filename, search, obj, layer)
+        elif (uid in {SHEL_MTL, VTWO_MTL}):  # VRay2SidedMtl
+            sides = get_references(mat)
+            for side in sides:
+                material = adjust_material(filename, search, obj, side)
         elif (uid == ARCH_MTL):  # Arch
             mtl_name = get_material_name(mat)
             refs = get_references(mat)
