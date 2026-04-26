@@ -611,7 +611,6 @@ class ByteArrayChunk(MaxChunk):
 
     def set_meta_data(self, data):
         metadict = {}
-        matkey = False
         try:
             mdatazip = list(zip(*[iter(data.split(b'\x00\x00\x00'))]*2))
             metadata = list(filter(lambda tpl: b'' not in tpl, mdatazip))
@@ -1418,6 +1417,7 @@ def get_vray_material(vray):
         material.set('glossines', get_value(parameter, 0x06))
         material.set('metallic', get_value(parameter, 0x19))
         material.set('refraction', get_value(parameter, 0x09))
+        material.set('opacity', 1.0 - get_value(parameter, 0x1D))
         if (bitmap is not None):
             material.set('bitmap', Path(bitmap).name)
         if (shinmap is not None):
