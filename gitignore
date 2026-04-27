@@ -1,0 +1,12 @@
+__pycache__/
+__pypackages__/
+lib/
+.pytype/
+.env
+.venv
+.json
+.zip
+.dmypy.json
+
+
+
