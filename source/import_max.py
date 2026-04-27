@@ -1134,7 +1134,7 @@ def get_tri_data(chunk):
 
 def get_property(properties, idx):
     for child in properties.children:
-        if (child.types in {0xA, 0x100E}):
+        if (child.types != 0x9):
             if (get_short(child.data, 0)[0] == idx):
                 return child
     return None
