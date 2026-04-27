@@ -2,11 +2,11 @@ __pycache__/
 __pypackages__/
 lib/
 .pytype/
+.patch
+.diff
 .env
 .venv
 .json
 .zip
+.whl
 .dmypy.json
-
-
-
