@@ -66,6 +66,7 @@ EDIT_MESH = 0x00000000E44F10B3  # Editable Mesh
 EDIT_POLY = 0x192F60981BF8338D  # Editable Poly
 POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
+COPHY_MTL = 0x871517206912AB89  # CoronaPhysicalMtl
 SURF_MTL = 0x62F74B4C7E73161F  # Standard Surface
 RAYT_MTL = 0x329B106E27190FF4  # RaytraceMtl
 PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
@@ -743,7 +744,6 @@ class ChunkReader(object):
                 chunk.set_meta_data(data)
                 return [chunk]
         while offset < len(data):
-            old = offset
             offset, chunk = self.get_next_chunk(superid, data, offset, level,
                                                 len(chunks), conReader, primReader)
             chunks.append(chunk)
@@ -1441,7 +1441,6 @@ def get_vray_material(vray):
 def get_corona_material(mtl):
     material = Material()
     try:
-        material = Material()
         corona = mtl[0].children
         parameter = get_reference(mtl[0])
         bitmap = get_bitmap(parameter.get(0))
@@ -1475,6 +1474,37 @@ def get_corona_material(mtl):
                     material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'CoronaMtl' Error:", exc)
+    return material
+
+
+def get_corophysical_material(mtl):
+    material = Material()
+    try:
+        corona = mtl[0].children
+        parameter = get_reference(mtl[0])
+        bitmap = get_bitmap(parameter.get(18))
+        normal = get_references(parameter.get(20))
+        material.set('diffuse', get_parameter(corona[0x52], 1))
+        material.set('specular', get_parameter(corona[0x09], 1))
+        material.set('shinines', 1.0 - get_parameter(corona[0x0F], 2))
+        material.set('glossines', get_parameter(corona[0x3B], 2))
+        material.set('metallic', get_parameter(corona[0x56], 2))
+        material.set('refraction', get_parameter(corona[0x1B], 2))
+        material.set('opacity', get_parameter(corona[0x36], 2))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
+        if (normal and len(normal) > 0):
+            values = normal[0].children
+            for val in values:
+                print('values', val)
+            material.set('strength', get_parameter(values[0x03], 2))
+            refs = get_references(normal[0])
+            if refs:
+                normalmap = get_bitmap(refs[0])
+                if (normalmap is not None):
+                    material.set('normalmap', Path(normalmap).name)
+    except Exception as exc:
+        print("\t'CoronaPhysicalMtl' Error:", exc)
     return material
 
 
@@ -1521,6 +1551,10 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             shaders = get_references(refs[0])
             material = get_standard_surface(shaders)
+        elif (uid == COPHY_MTL):  # CoronaPhysicalMtl
+            refs = get_references(mat)
+            mtl_id = mat.get_first(0x0FA0)
+            material = get_corophysical_material(refs)
         elif (uid == LAYER_MTL):  # CoronaLayeredMtl
             refs = get_references(mat)
             layers = get_reference(refs[0])
@@ -1537,6 +1571,9 @@ def adjust_material(filename, search, obj, mat):
             material = get_arch_material(refs[0])
         elif (uid == 0x0200):  # Multi/Sub-Object
             refs = get_references(mat)
+            if not refs:
+                rf = get_reference(mat)
+                refs = list(rf.values())
             for ref in refs:
                 if (ref is not None):
                     material = adjust_material(filename, search, obj, ref)
