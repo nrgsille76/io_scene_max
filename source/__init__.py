@@ -4,7 +4,7 @@
 
 
 __author__ = "Sebastian Sille <nrgsille@gmail.com>"
-__version__ = "1.7.9"
+__version__ = "1.8.0"
 __date__ = "18 Nov 2023"
 
 
