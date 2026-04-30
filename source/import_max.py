@@ -1153,6 +1153,17 @@ def get_bitmap(chunk):
                     pathstring = pathchunk.data
                 elif (pathlink and pathlink.children):
                     matlib = pathlink.children[0]
+            else:
+                references = get_references(parameters[1])
+                for reference in references:
+                    for ref in reference.children:
+                        imglink = ref.get_first(0x1260)
+                        if imglink and imglink.children:
+                            matlib = imglink.children[0]
+                if matlib is None:
+                    for block in parameters[1].children:
+                        if (block.children and get_guid(block) == 0x3333):
+                            matlib = block.children[0]
         if (matlib and matlib.data):
             idsize = len(matlib.data[:-4])
             metaidx = get_longs(matlib.data, idsize, len(matlib.data[idsize:]) // 4)[0]
@@ -1482,7 +1493,11 @@ def get_corophysical_material(mtl):
     try:
         corona = mtl[0].children
         parameter = get_reference(mtl[0])
-        bitmap = get_bitmap(parameter.get(18))
+        ambient = get_references(parameter.get(0))
+        color = get_references(parameter.get(2))
+        bitmap = get_bitmap(ambient[0])
+        shinmap = get_bitmap(parameter.get(18))
+        specmap = get_bitmap(get_reference(color[0]).get(0))
         normal = get_references(parameter.get(20))
         material.set('diffuse', get_parameter(corona[0x52], 1))
         material.set('specular', get_parameter(corona[0x09], 1))
@@ -1493,10 +1508,12 @@ def get_corophysical_material(mtl):
         material.set('opacity', get_parameter(corona[0x36], 2))
         if (bitmap is not None):
             material.set('bitmap', Path(bitmap).name)
+        if (shinmap is not None):
+            material.set('shinmap', Path(shinmap).name)
+        if (specmap is not None):
+            material.set('glossmap', Path(specmap).name)
         if (normal and len(normal) > 0):
             values = normal[0].children
-            for val in values:
-                print('values', val)
             material.set('strength', get_parameter(values[0x03], 2))
             refs = get_references(normal[0])
             if refs:
