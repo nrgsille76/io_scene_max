@@ -22,7 +22,6 @@ import math
 import zlib
 import array
 import struct
-import codecs
 import mathutils
 from pathlib import Path
 from bpy_extras.image_utils import load_image
@@ -1460,12 +1459,12 @@ def get_corona_material(mtl):
         transmap = get_bitmap(parameter.get(5))
         normal = get_references(parameter.get(6))
         material.set('diffuse', get_parameter(corona[0x03], 1))
-        material.set('specular', get_parameter(corona[0x04], 1))
-        material.set('shinines', get_parameter(corona[0x3E], 2))
+        material.set('specular', get_parameter(corona[0x05], 1))
+        material.set('shinines', get_parameter(corona[0x0D], 2))
         material.set('emissive', get_parameter(corona[0x08], 1))
-        material.set('glossines', get_parameter(corona[0x09], 2))
-        material.set('metallic', get_parameter(corona[0x0D], 2))
-        material.set('refraction', get_parameter(corona[0x40], 2))
+        material.set('glossines', get_parameter(corona[0x0A], 2))
+        material.set('metallic', get_parameter(corona[0x0E], 2))
+        material.set('refraction', get_parameter(corona[0x3F], 2))
         material.set('opacity', 1.0 - get_parameter(corona[0x0B], 2))
         if (bitmap is not None):
             material.set('bitmap', Path(bitmap).name)
