@@ -1598,6 +1598,11 @@ def adjust_material(filename, search, obj, mat):
                 matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
             else:
                 matname = mtl_name
+            # Make material name unique by appending bitmap name if available
+            # This prevents multiple different materials with the same name from being treated as one
+            texname = material.get('bitmap', None)
+            if texname is not None:
+                matname = f"{matname}_{Path(texname).stem}"
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
