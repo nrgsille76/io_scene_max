@@ -1,12 +1,27 @@
-__pycache__/
-__pypackages__/
+# Librarys
 lib/
-.pytype/
-.patch
-.diff
 .env
 .venv
 .json
+
+# Python temp paths.
+__pycache__/
+__pypackages__/
+*.py[cod]
+.pytype/
+
+# Editors.
+*~
+*.swp
+*.swo
+*#
+
+# Local patches.
+/*.patch
+/*.diff
+.patch
+.diff
+
+# Locally built extensions.
+/*.zip
 .zip
-.whl
-.dmypy.json
