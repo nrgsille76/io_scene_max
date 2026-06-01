@@ -67,6 +67,8 @@ POLY_MESH = 0x000000005D21369A  # PolyMeshObject
 LAYER_MTL = 0x8425554E65486584  # CoronaLayeredMtl
 COPHY_MTL = 0x871517206912AB89  # CoronaPhysicalMtl
 SURF_MTL = 0x62F74B4C7E73161F  # Standard Surface
+SKIN_MTL = 0x44CFDE95bEC41C73  # CoronaSkinMtl
+HAIR_MTL = 0xCA41F54622C05DD6  # CoronaHairMtl
 RAYT_MTL = 0x329B106E27190FF4  # RaytraceMtl
 PHYS_MTL = 0xDEADC0013D6B1CEC  # PhysicalMtl
 CORO_MTL = 0x448931DD70BE6506  # CoronaMtl
@@ -1487,6 +1489,43 @@ def get_corona_material(mtl):
     return material
 
 
+def get_skinhair_material(mtl):
+    material = Material()
+    try:
+        corona = mtl[0].children
+        parameter = get_reference(mtl[0])
+        bitmap = get_bitmap(parameter.get(0))
+        shinmap = get_bitmap(parameter.get(1))
+        glossmap = get_bitmap(parameter.get(5))
+        transmap = get_bitmap(parameter.get(2))
+        normal = get_references(parameter.get(6))
+        material.set('diffuse', get_parameter(corona[0x03], 1))
+        material.set('specular', get_parameter(corona[0x0A], 1))
+        material.set('shinines', get_parameter(corona[0x0C], 2))
+        material.set('glossines', get_parameter(corona[0x08], 2))
+        material.set('refraction', get_parameter(corona[0x0B], 2))
+        material.set('opacity', 1.0 - get_parameter(corona[0x15], 2))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
+        if (shinmap is not None):
+            material.set('shinmap', Path(shinmap).name)
+        if (glossmap is not None):
+            material.set('glossmap', Path(glossmap).name)
+        if (transmap is not None):
+            material.set('transmap', Path(transmap).name)
+        if (normal and len(normal) > 0):
+            values = normal[0].children
+            refs = get_references(normal[0])
+            if refs:
+                normalmap = get_bitmap(refs[0])
+                material.set('strength', get_parameter(values[0x03], 2))
+                if (normalmap is not None):
+                    material.set('normalmap', Path(normalmap).name)
+    except Exception as exc:
+        print("\t'CoronaSkinMtl' Error:", exc)
+    return material
+
+
 def get_corophysical_material(mtl):
     material = Material()
     try:
@@ -1567,6 +1606,10 @@ def adjust_material(filename, search, obj, mat):
             refs = get_references(mat)
             shaders = get_references(refs[0])
             material = get_standard_surface(shaders)
+        elif (uid in {HAIR_MTL, SKIN_MTL}):  # CoronaSkinMtl
+            mtl_id = mat.get_first(0x0FA0)
+            refs = get_references(mat)
+            material = get_skinhair_material(refs)
         elif (uid == COPHY_MTL):  # CoronaPhysicalMtl
             refs = get_references(mat)
             mtl_id = mat.get_first(0x0FA0)
