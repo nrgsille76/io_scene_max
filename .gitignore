@@ -1,4 +1,4 @@
-# Librarys
+# Librarys.
 lib/
 .env
 .venv
@@ -17,11 +17,8 @@ __pypackages__/
 *#
 
 # Local patches.
-/*.patch
-/*.diff
 .patch
 .diff
 
 # Locally built extensions.
-/*.zip
 .zip
