@@ -211,7 +211,6 @@ def is_maxfile(filename):
 
 class MaxStream(io.BytesIO):
     """Returns an instance of the BytesIO class as read-only file object."""
-
     def __init__(self, fp, sect, size, offset, sectorsize, fat, filesize):
         if size == UNKNOWN_SIZE:
             size = len(fat) * sectorsize
@@ -338,7 +337,6 @@ class MaxFileDirEntry:
 
 class ImportMaxFile:
     """Representing an interface for importing .max files."""
-
     def __init__(self, filename=None):
         self._filesize = None
         self.byte_order = None
@@ -570,7 +568,6 @@ class ImportMaxFile:
 
 class MaxChunk(object):
     """Representing a chunk of a .max file."""
-
     __slots__ = "superid", "types", "level", "number", "size", "data"
 
     def __init__(self, superid, types, level, number, size, data=None):
@@ -856,12 +853,12 @@ def get_node_name(node):
         name = node.get_first(0x0962)
         if (name):
             return name.data
-    return None
+    return node.__class__.__name__
 
 
 def get_class(chunk):
     global CLS_DIR3_LIST
-    if (chunk.types < len(CLS_DIR3_LIST)):
+    if chunk and (chunk.types < len(CLS_DIR3_LIST)):
         return CLS_DIR3_LIST[chunk.types]
     return None
 
@@ -896,7 +893,7 @@ def get_guid(chunk):
         guid = clid.get_first(0x2060)
         if guid is not None:
             return guid.data[1]
-    return chunk.types
+    return chunk.types if chunk else 0
 
 
 def get_super_id(chunk):
@@ -1793,9 +1790,9 @@ def get_matrix_mesh_material(node):
         lyr = refs.get(6, None)
     else:
         refs = get_references(node)
-        prs = refs[0]
-        msh = refs[1]
-        mat = refs[3]
+        prs = refs[0] if len(refs) else None
+        msh = refs[1] if len(refs) > 1 else None
+        mat = refs[3] if len(refs) > 3 else None
         lyr = refs[6] if len(refs) > 6 else None
     return prs, msh, mat, lyr
 
@@ -1844,17 +1841,18 @@ def draw_map(shape, uvmap, uvcoords, uvwids):
 
 
 def create_shape(context, settings, node, mesh, mat):
+    meshname = ""
     filename, obtypes, search = settings
     name = node.get_first(0x0962)
     if name is not None:
-        name = name.data
-    meshobject = draw_shape(name, mesh, mesh.faces)
+        meshname = name.data
+    meshobject = draw_shape(meshname, mesh, mesh.faces)
     if ('UV' in obtypes and mesh.maps):
         for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
             meshobject = draw_map(meshobject, idx, mesh.cords[idx], mesh.uvids[idx])
     meshobject.validate()
     meshobject.update()
-    obj = bpy.data.objects.new(name, meshobject)
+    obj = bpy.data.objects.new(meshname, meshobject)
     context.view_layer.active_layer_collection.collection.objects.link(obj)
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
@@ -1943,8 +1941,6 @@ def create_plane(context, settings, node, plane, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(plane)[0]
     try:
         length = get_float(parablock.children[1].data, 15)[0]
@@ -1955,7 +1951,7 @@ def create_plane(context, settings, node, plane, mat, mtx):
     bpy.ops.mesh.primitive_plane_add(size=1.0, scale=(width, length, 0.0))
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -1968,8 +1964,6 @@ def create_box(context, settings, node, box, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(box)[0]
     try:
         length = get_float(parablock.children[1].data, 15)[0]
@@ -1983,7 +1977,7 @@ def create_box(context, settings, node, box, mat, mtx):
     bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -1996,8 +1990,6 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(sphere)[0]
     try:
         rd = get_float(parablock.children[1].data, 15)[0]
@@ -2006,7 +1998,7 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -2019,8 +2011,6 @@ def create_torus(context, settings, node, torus, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(torus)[0]
     try:
         rd1 = get_float(parablock.children[1].data, 15)[0]
@@ -2031,7 +2021,7 @@ def create_torus(context, settings, node, torus, mat, mtx):
     bpy.ops.mesh.primitive_torus_add(major_radius=rd1, minor_radius=rd2)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -2044,8 +2034,6 @@ def create_cylinder(context, settings, node, cylinder, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(cylinder)[0]
     try:
         rd = get_float(parablock.children[1].data, 15)[0]
@@ -2058,7 +2046,7 @@ def create_cylinder(context, settings, node, cylinder, mat, mtx):
     bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -2071,8 +2059,6 @@ def create_cone(context, settings, node, cone, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    if name is not None:
-        name = name.data
     parablock = get_references(cone)[0]
     try:
         rd1 = get_float(parablock.children[1].data, 15)[0]
@@ -2086,7 +2072,7 @@ def create_cone(context, settings, node, cone, mat, mtx):
     bpy.ops.mesh.primitive_cone_add(radius1=rd1, radius2=rd2, depth=height)
     obj = context.selected_objects[0]
     if name is not None:
-        obj.name = str(name)
+        obj.name = name.data
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
@@ -2105,34 +2091,35 @@ def create_skipable(context, node, skip):
 
 def create_mesh(context, settings, node, msh, mat, mtx):
     created = []
-    object_list.clear()
     uid = get_guid(msh)
-    if (uid in {POLY_MESH, EDIT_POLY}):
-        created = create_editable_poly(context, settings, node, msh, mat)
-    elif (uid in {0x019, EDIT_MESH}):
-        created = create_editable_mesh(context, settings, node, msh, mat)
-    elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
-        created = create_box(context, settings, node, msh, mat, mtx)
-    elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
-        created = create_sphere(context, settings, node, msh, mat, mtx)
-    elif (uid == 0x012 and 'PRIMITIVE' in settings[1]):
-        created = create_cylinder(context, settings, node, msh, mat, mtx)
-    elif (uid == 0x020 and 'PRIMITIVE' in settings[1]):
-        created = create_torus(context, settings, node, msh, mat, mtx)
-    elif (uid == CONE and 'PRIMITIVE' in settings[1]):
-        created = create_cone(context, settings, node, msh, mat, mtx)
-    elif (uid == PLANE and 'PRIMITIVE' in settings[1]):
-        created = create_plane(context, settings, node, msh, mat, mtx)
-    elif (uid in {0x2032, 0x2033}):
-        created = create_shell(context, settings, node, msh, mat, mtx)
-    elif (uid == DUMMY and 'EMPTY' in settings[1]):
-        created = [create_dummy_object(context, node, uid)]
-    elif (uid == BIPED_OBJ and 'ARMATURE' in settings[1]):
-        created = [create_dummy_object(context, node, uid)]
-    else:
-        skip = SKIPPABLE.get(uid)
-        if (skip is not None):
-            created = create_skipable(context, node, skip)
+    if msh is not None:
+        object_list.clear()
+        if (uid in {POLY_MESH, EDIT_POLY}):
+            created = create_editable_poly(context, settings, node, msh, mat)
+        elif msh.get_first(0x08FE) and (uid in {0x10, 0x11, 0x12, 0x19, EDIT_MESH}):
+            created = create_editable_mesh(context, settings, node, msh, mat)
+        elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
+            created = create_box(context, settings, node, msh, mat, mtx)
+        elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
+            created = create_sphere(context, settings, node, msh, mat, mtx)
+        elif (uid == 0x012 and 'PRIMITIVE' in settings[1]):
+            created = create_cylinder(context, settings, node, msh, mat, mtx)
+        elif (uid == 0x020 and 'PRIMITIVE' in settings[1]):
+            created = create_torus(context, settings, node, msh, mat, mtx)
+        elif (uid == CONE and 'PRIMITIVE' in settings[1]):
+            created = create_cone(context, settings, node, msh, mat, mtx)
+        elif (uid == PLANE and 'PRIMITIVE' in settings[1]):
+            created = create_plane(context, settings, node, msh, mat, mtx)
+        elif (uid in {0x2032, 0x2033}):
+            created = create_shell(context, settings, node, msh, mat, mtx)
+        elif (uid == DUMMY and 'EMPTY' in settings[1]):
+            created = [create_dummy_object(context, node, uid)]
+        elif (uid == BIPED_OBJ and 'ARMATURE' in settings[1]):
+            created = [create_dummy_object(context, node, uid)]
+        else:
+            skip = SKIPPABLE.get(uid)
+            if (skip is not None):
+                created = create_skipable(context, node, skip)
     return created, uid
 
 
@@ -2164,7 +2151,12 @@ def create_object(context, settings, node, transform):
 def make_scene(context, settings, mscale, transform, parent):
     imported = []
     for chunk in parent.children:
-        if isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x14} and get_super_id(chunk) <= 0x1:
+        if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
+            try:
+                imported.append(create_object(context, settings, chunk, transform))
+            except Exception as exc:
+                print("\tImportError: %s %s" % (exc, chunk), get_node_name(chunk))
+        elif isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x10, 0x2032}:
             try:
                 imported.append(create_object(context, settings, chunk, transform))
             except Exception as exc:
