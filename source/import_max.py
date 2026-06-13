@@ -2179,13 +2179,10 @@ def make_scene(context, settings, mscale, transform, parent):
     imported = []
     for chunk in parent.children:
         if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
-            imported.append(create_object(context, settings, chunk, transform))
-            '''
             try:
                 imported.append(create_object(context, settings, chunk, transform))
             except Exception as exc:
                 print("\tImportError: %s %s" % (exc, chunk), get_node_name(chunk))
-            '''
         elif isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x10, 0x2032}:
             try:
                 imported.append(create_object(context, settings, chunk, transform))
