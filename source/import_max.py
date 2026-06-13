@@ -1532,7 +1532,7 @@ def get_corophysical_material(mtl):
         color = get_references(parameter.get(2))
         bitmap = get_bitmap(ambient[0])
         shinmap = get_bitmap(parameter.get(18))
-        specmap = get_bitmap(get_reference(color[0]).get(0))
+        specmap = get_bitmap(get_reference(color[0]).get(0)) if color else None
         normal = get_references(parameter.get(20))
         material.set('diffuse', get_parameter(corona[0x52], 1))
         material.set('specular', get_parameter(corona[0x09], 1))
@@ -1560,6 +1560,29 @@ def get_corophysical_material(mtl):
     return material
 
 
+def get_legacy_material(mtl):
+    material = None
+    try:
+        if (len(mtl) > 1):
+            colors = mtl[1]
+            material = Material()
+            parameter = get_reference(colors)
+            texmap = parameter.get(3)
+            colchunk = texmap.get_first(0x4000)
+            texchunk = texmap.get_first(0x5010)
+            if colchunk:
+                color = colchunk.get_first(0x4030)
+                if color:
+                    material.set('diffuse', color.data[:3])
+            if texchunk:
+                namechunk = texchunk.get_first(0x1230)
+                if namechunk:
+                    material.set('bitmap', Path(namechunk.data).name)
+    except:
+        pass
+    return material
+
+
 def get_arch_material(ad):
     material = Material()
     try:
@@ -1580,6 +1603,10 @@ def adjust_material(filename, search, obj, mat):
             mtl_id = mat.get_first(0x4000)
             refs = get_references(mat)
             material = get_standard_material(refs)
+        elif (uid == 0x0006):  # Legacy
+            mtl_id = mat.get_first(0x4000)
+            refs = get_references(mat)
+            material = get_legacy_material(refs)
         elif (uid == VRAY_MTL):  # VRayMtl
             mtl_id = mat.get_first(0x5431)
             refs = get_reference(mat)
@@ -2152,10 +2179,13 @@ def make_scene(context, settings, mscale, transform, parent):
     imported = []
     for chunk in parent.children:
         if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
+            imported.append(create_object(context, settings, chunk, transform))
+            '''
             try:
                 imported.append(create_object(context, settings, chunk, transform))
             except Exception as exc:
                 print("\tImportError: %s %s" % (exc, chunk), get_node_name(chunk))
+            '''
         elif isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x10, 0x2032}:
             try:
                 imported.append(create_object(context, settings, chunk, transform))
