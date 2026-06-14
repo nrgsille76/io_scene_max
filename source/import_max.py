@@ -1531,6 +1531,8 @@ def get_corophysical_material(mtl):
         ambient = get_references(parameter.get(0))
         color = get_references(parameter.get(2))
         bitmap = get_bitmap(ambient[0])
+        if bitmap is None:
+            bitmap = get_bitmap(parameter.get(0))
         shinmap = get_bitmap(parameter.get(18))
         specmap = get_bitmap(get_reference(color[0]).get(0)) if color else None
         normal = get_references(parameter.get(20))
@@ -2214,7 +2216,7 @@ def make_scene(context, settings, mscale, transform, parent):
 
 def read_scene(context, maxfile, settings, mscale, transform):
     global SCENE_LIST, META_DATA
-    metasid = max(entry.sid for entry in maxfile.direntries if entry is not None)
+    metasid = min(max(entry.sid for entry in maxfile.direntries if entry is not None), 11)
     SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
     META_DATA = read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
     make_scene(context, settings, mscale, transform, SCENE_LIST[0])
