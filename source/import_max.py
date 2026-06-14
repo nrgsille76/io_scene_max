@@ -842,7 +842,7 @@ def get_node_parent(node):
     parent = None
     if (node):
         chunk = node.get_first(0x0960)
-        if (chunk is not None):
+        if (chunk and len(chunk.data) > 3):
             idx, offset = get_long(chunk.data, 0)
             parent = get_node(idx)
     return parent
@@ -2180,12 +2180,7 @@ def create_object(context, settings, node, transform):
 def make_scene(context, settings, mscale, transform, parent):
     imported = []
     for chunk in parent.children:
-        if isinstance(chunk, SceneChunk) and get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1:
-            try:
-                imported.append(create_object(context, settings, chunk, transform))
-            except Exception as exc:
-                print("\tImportError: %s %s" % (exc, chunk), get_node_name(chunk))
-        elif isinstance(chunk, SceneChunk) and get_guid(chunk) in {0x1, 0x10, 0x2032}:
+        if isinstance(chunk, SceneChunk) and (get_guid(chunk) == 0x1 and get_super_id(chunk) == 0x1) or get_node_parent(chunk):
             try:
                 imported.append(create_object(context, settings, chunk, transform))
             except Exception as exc:
