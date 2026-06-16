@@ -46,7 +46,6 @@ FREESECT = 0xFFFFFFFF  # (-1) unallocated sector
 MAX_STREAM = 2  # element is a stream object
 ROOT_STORE = 5  # element is a root storage
 
-TYP_VALUE = {0x100, 0x2513}
 TYP_REFS = {0x1040, 0x2034, 0x2035}
 TYP_SHORT = {0x103, 0x105, 0x99C, 0x2500, 0x3005}
 TYP_LINK = {0x1020, 0x1030, 0x1050, 0x1080, 0x3002, 0x4003}
@@ -76,6 +75,7 @@ ARCH_MTL = 0x4A16365470B05735  # ArchMtl
 VRAY_MTL = 0x7034695C37BF3F2F  # VRayMtl
 VTWO_MTL = 0x11731B4B6066686A  # VRay2SidedMtl
 SHEL_MTL = 0x0000000046EE536A  # Shellac
+BOOLEAN = 0x1BBAC5F7BC209AF  # Boolean
 DUMMY = 0x0000000000876234  # Dummy
 PLANE = 0x77566F65081F1DFC  # Plane
 CONE = 0x00000000A86C23DD  # Cone
@@ -636,8 +636,6 @@ class ByteArrayChunk(MaxChunk):
             self.set_string(data)
         elif (self.types in TYP_LINK):
             self.set(data, '<I', 0, len(data))
-        elif (self.types in TYP_VALUE):
-            self.set(data, '<f', 0, len(data))
         elif (self.types in TYP_REFS):
             self.set(data, '<' + 'I' * int(len(data) / 4), 0, len(data))
         elif (self.types in TYP_SHORT):
@@ -1122,7 +1120,7 @@ def get_tri_data(chunk):
 
 def get_property(properties, idx):
     for child in properties.children:
-        if (child.types != 0x9):
+        if len(child.data) > 5 and not isinstance(child.data, tuple):
             if (get_short(child.data, 0)[0] == idx):
                 return child
     return None
@@ -1340,32 +1338,31 @@ def get_standard_surface(arnold):
 def get_physical_material(phys):
     material = None
     try:
-        if len(phys):
-            colors = phys[0]
-            material = Material()
-            textures = get_reference(colors)
-            bitmap = get_bitmap(textures.get(1))
-            glossmap = get_bitmap(textures.get(2))
-            shinmap = get_bitmap(textures.get(4))
-            normalmap = get_bitmap(textures.get(21))
-            transmap = get_bitmap(textures.get(24))
-            material.set('diffuse', get_rgb(colors, 0x02))
-            material.set('metallic', get_value(colors, 0x05))
-            material.set('shinines', 1.0 - get_value(colors, 0x03))
-            material.set('glossines', 1.0 - get_value(colors, 0x04))
-            material.set('opacity', 1.0 - get_value(colors, 0x06))
-            material.set('specular', get_rgb(colors, 0x0A))
-            material.set('emissive', get_rgb(colors, 0x1F))
-            if (bitmap is not None):
-                material.set('bitmap', Path(bitmap).name)
-            if (glossmap is not None):
-                material.set('glossmap', Path(glossmap).name)
-            if (shinmap is not None):
-                material.set('shinmap', Path(shinmap).name)
-            if (transmap is not None):
-                material.set('transmap', Path(transmap).name)
-            if (normalmap is not None):
-                material.set('normalmap', Path(normalmap).name)
+        colors = phys[0]
+        material = Material()
+        textures = get_reference(colors)
+        bitmap = get_bitmap(textures.get(1))
+        glossmap = get_bitmap(textures.get(2))
+        shinmap = get_bitmap(textures.get(4))
+        normalmap = get_bitmap(textures.get(21))
+        transmap = get_bitmap(textures.get(24))
+        material.set('diffuse', get_rgb(colors, 0x02))
+        material.set('metallic', get_value(colors, 0x05))
+        material.set('shinines', 1.0 - get_value(colors, 0x03))
+        material.set('glossines', 1.0 - get_value(colors, 0x04))
+        material.set('opacity', 1.0 - get_value(colors, 0x06))
+        material.set('specular', get_rgb(colors, 0x0A))
+        material.set('emissive', get_rgb(colors, 0x1F))
+        if (bitmap is not None):
+            material.set('bitmap', Path(bitmap).name)
+        if (glossmap is not None):
+            material.set('glossmap', Path(glossmap).name)
+        if (shinmap is not None):
+            material.set('shinmap', Path(shinmap).name)
+        if (transmap is not None):
+            material.set('transmap', Path(transmap).name)
+        if (normalmap is not None):
+            material.set('normalmap', Path(normalmap).name)
     except Exception as exc:
         print("\t'PhysicalMtl' Error:", exc)
     return material
@@ -1974,7 +1971,6 @@ def create_plane(context, settings, node, plane, mat, mtx):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
-    plane.geometry = obj
     created.append(obj)
     return created
 
@@ -2000,7 +1996,6 @@ def create_box(context, settings, node, box, mat, mtx):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
-    box.geometry = obj
     created.append(obj)
     return created
 
@@ -2017,7 +2012,7 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
             rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
     else:
         try:
-            rd = parablock.children[2].get_first(0x100).data[0]
+            rd = get_float(parablock.children[2].get_first(0x100).data)[0]
         except:
             rd = UNPACK_BOX_DATA(parablock.children[2].data)[6]
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
@@ -2027,7 +2022,6 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
-    sphere.geometry = obj
     created.append(obj)
     return created
 
@@ -2050,7 +2044,6 @@ def create_torus(context, settings, node, torus, mat, mtx):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
-    torus.geometry = obj
     created.append(obj)
     return created
 
@@ -2079,7 +2072,6 @@ def create_cylinder(context, settings, node, cylinder, mat, mtx):
         obj = bpy.data.objects.new(name.data, None)
         context.view_layer.active_layer_collection.collection.objects.link(obj)
     adjust_matrix(obj, mtx)
-    cylinder.geometry = obj
     created.append(obj)
     return created
 
@@ -2105,7 +2097,6 @@ def create_cone(context, settings, node, cone, mat, mtx):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
     adjust_matrix(obj, mtx)
-    cone.geometry = obj
     created.append(obj)
     return created
 
@@ -2145,6 +2136,10 @@ def create_mesh(context, settings, node, msh, mat, mtx):
             created = [create_dummy_object(context, node, uid)]
         elif (uid == BIPED_OBJ and 'ARMATURE' in settings[1]):
             created = [create_dummy_object(context, node, uid)]
+        elif (uid == BOOLEAN):
+            boolrefs = get_references(get_references(msh)[0])
+            for ref in boolrefs:
+                created, uid = create_mesh(context, settings, node, ref, mat, mtx)  
         else:
             skip = SKIPPABLE.get(uid)
             if (skip is not None):
