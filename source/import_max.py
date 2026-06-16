@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2023-2024 Sebastian Schrand
+# SPDX-FileCopyrightText: 2023-2026 Sebastian Schrand
 #                         2017-2022 Jens M. Plonka
 #                         2005-2018 Philippe Lagadec
 #
@@ -51,7 +51,7 @@ TYP_REFS = {0x1040, 0x2034, 0x2035}
 TYP_SHORT = {0x103, 0x105, 0x99C, 0x2500, 0x3005}
 TYP_LINK = {0x1020, 0x1030, 0x1050, 0x1080, 0x3002, 0x4003}
 TYP_NAME = {0x340, 0x456, 0x962, 0x10A0, 0x1010, 0x1230, 0x4001}
-TYP_ARRAY = {0x102, 0x96A, 0x96B, 0x96C, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
+TYP_ARRAY = {0x102, 0x96A, 0x96B, 0x96C, 0x9ED, 0x2501, 0x2503, 0x2504, 0x2505, 0x2511}
 UNPACK_BOX_DATA = struct.Struct('<HIHHBff').unpack_from  # Index, int, 2short, byte, 2float
 INVALID_NAME = re.compile('^[0-9].*')
 
@@ -108,7 +108,6 @@ VID_PST_QUE = []
 SCENE_LIST = []
 
 object_list = []
-object_dict = {}
 parent_dict = {}
 matrix_dict = {}
 
@@ -584,7 +583,6 @@ class MaxChunk(object):
 
 class ByteArrayChunk(MaxChunk):
     """A byte array of a .max chunk."""
-
     def __init__(self, superid, types, level, number, size, data):
         MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = superid
@@ -654,7 +652,6 @@ class ByteArrayChunk(MaxChunk):
 
 class ClassIDChunk(ByteArrayChunk):
     """The class ID subchunk of a .max chunk."""
-
     def __init__(self, superid, types, level, number, size, data):
         MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = 0x5
@@ -671,7 +668,6 @@ class ClassIDChunk(ByteArrayChunk):
 
 class DirectoryChunk(ByteArrayChunk):
     """The directory chunk of a .max file."""
-
     def __init__(self, superid, types, level, number, size, data):
         MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.superid = 0x4
@@ -683,7 +679,6 @@ class DirectoryChunk(ByteArrayChunk):
 
 class ContainerChunk(MaxChunk):
     """A container chunk in a .max file wich includes byte arrays."""
-
     def __init__(self, superid, types, level, number, size, data, primReader=ByteArrayChunk):
         MaxChunk.__init__(self, superid, types, level, number, size, data)
         self.primReader = primReader
@@ -705,7 +700,6 @@ class ContainerChunk(MaxChunk):
 
 class SceneChunk(ContainerChunk):
     """The scene chunk of a .max file wich includes the relevant data for blender."""
-
     def __init__(self, superid, types, data, number, level, size, primReader=ByteArrayChunk):
         MaxChunk.__init__(self, superid, types, data, number, level, size)
         self.primReader = primReader
@@ -722,7 +716,6 @@ class SceneChunk(ContainerChunk):
 
 class ChunkReader(object):
     """The chunk reader class for decoding the byte arrays."""
-
     def __init__(self, name=None):
         self.name = name
 
@@ -766,7 +759,6 @@ class ChunkReader(object):
 
 class Mesh3d(object):
     """Class representing a editable poly mesh object."""
-    
     def __init__(self):
         self.verts = []
         self.faces = []
@@ -795,7 +787,6 @@ class Mesh3d(object):
 
 class Point3d(object):
     """Class representing a three dimensional vector plus pointflag."""
-
     def __init__(self):
         self.points = None
         self.flags = 0
@@ -813,7 +804,6 @@ class Point3d(object):
 
 class Material(object):
     """Representing a material chunk of a scene chunk."""
-
     def __init__(self):
         self.data = {}
 
@@ -2020,10 +2010,16 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
     parablock = get_references(sphere)[0]
-    try:
-        rd = get_float(parablock.children[1].data, 15)[0]
-    except:
-        rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+    if len(parablock.children[1].data) > 3:
+        try:
+            rd = get_float(parablock.children[1].data, 15)[0]
+        except:
+            rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+    else:
+        try:
+            rd = parablock.children[2].get_first(0x100).data[0]
+        except:
+            rd = UNPACK_BOX_DATA(parablock.children[2].data)[6]
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
     obj = context.selected_objects[0]
     if name is not None:
@@ -2063,21 +2059,25 @@ def create_cylinder(context, settings, node, cylinder, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(cylinder)[0]
-    try:
-        rd = get_float(parablock.children[1].data, 15)[0]
-        hg = get_float(parablock.children[2].data, 15)[0]
-    except:
-        rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
-        hg = UNPACK_BOX_DATA(parablock.children[2].data)[6]
-    rad = -rd if (rd < 0) else rd
-    height = -hg if (hg < 0) else hg
-    bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
-    obj = context.selected_objects[0]
-    if name is not None:
-        obj.name = name.data
-    if ('MATERIAL' in obtypes):
-        adjust_material(filename, search, obj, mat)
+    parablock = get_references(cylinder)
+    if parablock:
+        try:
+            rd = get_float(parablock[0].children[1].data, 15)[0]
+            hg = get_float(parablock[0].children[2].data, 15)[0]
+        except:
+            rd = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
+            hg = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
+        rad = -rd if (rd < 0) else rd
+        height = -hg if (hg < 0) else hg
+        bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
+        obj = context.selected_objects[0]
+        if name is not None:
+            obj.name = name.data
+        if ('MATERIAL' in obtypes):
+            adjust_material(filename, search, obj, mat)
+    else:
+        obj = bpy.data.objects.new(name.data, None)
+        context.view_layer.active_layer_collection.collection.objects.link(obj)
     adjust_matrix(obj, mtx)
     cylinder.geometry = obj
     created.append(obj)
@@ -2236,7 +2236,6 @@ def read(context, filename, mscale, obtypes, search, transform):
 def load(operator, context, files=[], directory="", filepath="", scale_objects=1.0, use_collection=False,
          use_image_search=True, object_filter=None, use_apply_matrix=True, global_matrix=None):
 
-    object_dict.clear()
     parent_dict.clear()
     matrix_dict.clear()
 
@@ -2261,7 +2260,6 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
             context.view_layer.active_layer_collection = context.view_layer.layer_collection.children[collection.name]
         read(context, os.path.join(directory, fl.name), mscale, obtypes=object_filter, search=use_image_search, transform=use_apply_matrix)
 
-    object_dict.clear()
     parent_dict.clear()
     matrix_dict.clear()
 
