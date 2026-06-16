@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2023-2024 Sebastian Schrand
+# SPDX-FileCopyrightText: 2023-2026 Sebastian Schrand
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 
 __author__ = "Sebastian Sille <nrgsille@gmail.com>"
-__version__ = "1.8.8"
+__version__ = "1.8.9"
 __date__ = "18 Nov 2023"
 
 
