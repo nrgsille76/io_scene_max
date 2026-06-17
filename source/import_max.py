@@ -1130,7 +1130,7 @@ def get_bitmap(chunk):
     if (chunk is not None):
         pathstring = matlib = None
         parameters = get_references(chunk)
-        if (len(parameters) >= 2):
+        if (len(parameters) >= 2) and parameters[1]:
             custom = parameters[1].get_first(0x3)
             if (custom is not None):
                 pathchunk = custom.get_first(0x1230)
@@ -1878,7 +1878,10 @@ def create_shape(context, settings, node, mesh, mat):
     if ('MATERIAL' in obtypes):
         adjust_material(filename, search, obj, mat)
         if (len(mesh.mats) > 0):
-            obj.data.polygons.foreach_set("material_index", mesh.mats)
+            try:
+                obj.data.polygons.foreach_set("material_index", mesh.mats)
+            except Exception as exc:
+                print('\tArrayLengthMismatchError: %s' % exc)
     object_list.append(obj)
     return object_list
 
@@ -1903,7 +1906,7 @@ def create_editable_poly(context, settings, node, msh, mat):
             elif (child.types == 0x0108):
                 mesh.polys = get_poly_loops(child)
             elif (child.types == 0x010A):
-                mesh.tris = calc_point_float(child.data)
+                mesh.tris = get_tri_data(child)
             elif (child.types == 0x0118):
                 mesh.faces.append(get_face_chunks(child))
             elif (child.types == 0x011A):
