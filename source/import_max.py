@@ -1107,7 +1107,6 @@ def get_uvw_coords(chunk):
 
 
 def get_tri_data(chunk):
-    offset = 0
     vindex = []
     data = chunk.data
     head, offset = get_long(data)
@@ -1558,20 +1557,19 @@ def get_legacy_material(mtl):
             material = Material()
             color = colors.children
             parameter = get_reference(texmap)
+            bitmap = parameter.get(3)
             material.set('ambient', color[2].get_first(0x102).data)
             material.set('diffuse', color[3].get_first(0x102).data)
             material.set('specular', color[4].get_first(0x102).data)
             material.set('glossines', get_float(color[5].get_first(0x100).data)[0])
             material.set('shinines', 1.0 - get_float(color[6].get_first(0x100).data)[0])
             material.set('opacity', 1.0 - get_float(color[7].get_first(0x100).data)[0])
-            if parameter:
-                bitmap = parameter.get(3)
-                if bitmap:
-                    texchunk = bitmap.get_first(0x5010)
-                    if texchunk:
-                        namechunk = texchunk.get_first(0x1230)
-                        if namechunk:
-                            material.set('bitmap', Path(namechunk.data).name)
+            if (bitmap is not None):
+                texchunk = bitmap.get_first(0x5010)
+                if texchunk:
+                    namechunk = texchunk.get_first(0x1230)
+                    if namechunk:
+                        material.set('bitmap', Path(namechunk.data).name)
     except:
         pass
     return material
@@ -1779,6 +1777,8 @@ def get_scale(pos):
             refs = get_references(pos)
             if (len(refs) >= 3):
                 return get_scale(refs[0])
+        else:
+            pos = (1.0, 1.0, 1.0)
         scale = mathutils.Vector(pos[:3])
     return scale
 
@@ -1965,14 +1965,18 @@ def create_plane(context, settings, node, plane, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(plane)
-    try:
-        values = parablock[0].children
+    parablock = get_references(plane)[0]
+    if len(parablock.children[1].data) > 11:
+        values = parablock.children
         length = get_float(values[1].data, len(values[1].data)-4)[0]
         width = get_float(values[2].data, len(values[2].data)-4)[0]
-    except:
-        length = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
-        width = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
+    else:
+        try:
+            length = get_float(parablock.children[2].get_first(0x100).data)[0]
+            width = get_float(parablock.children[3].get_first(0x100).data)[0]    
+        except:
+            length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+            width = UNPACK_BOX_DATA(parablock.children[2].data)[6]
     bpy.ops.mesh.primitive_plane_add(size=1.0, scale=(width, length, 0.0))
     obj = context.selected_objects[0]
     if name is not None:
@@ -1988,33 +1992,33 @@ def create_box(context, settings, node, box, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(box)[0]
-    if len(parablock.children[1].data) > 5:
-        try:
-            values = parablock.children
+    parablock = get_references(box)
+    if parablock:
+        values = parablock[0].children
+        if len(parablock[0].children[1].data) > 11:
             length = get_float(values[1].data, len(values[1].data)-4)[0]
             width = get_float(values[2].data, len(values[2].data)-4)[0]
             depth = get_float(values[3].data, len(values[3].data)-4)[0]
-        except:
-            length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
-            width  = UNPACK_BOX_DATA(parablock.children[2].data)[6]
-            depth = UNPACK_BOX_DATA(parablock.children[3].data)[6]
+        else:
+            try:
+                length = get_float(values[2].get_first(0x100).data)[0]
+                width = get_float(values[3].get_first(0x100).data)[0]
+                depth = get_float(values[4].get_first(0x100).data)[0]
+            except:
+                length = UNPACK_BOX_DATA(values[1].data)[6]
+                width  = UNPACK_BOX_DATA(values[2].data)[6]
+                depth = UNPACK_BOX_DATA(values[3].data)[6]
+        height = -depth if (depth < 0) else depth
+        bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
+        obj = context.selected_objects[0]
+        if name is not None:
+            obj.name = name.data
+        if ('MATERIAL' in obtypes):
+            adjust_material(filename, search, obj, mat)
     else:
-        try:
-            length = get_float(parablock.children[2].get_first(0x100).data)[0]
-            width = get_float(parablock.children[3].get_first(0x100).data)[0]
-            depth = get_float(parablock.children[4].get_first(0x100).data)[0]
-        except:
-            length = UNPACK_BOX_DATA(parablock.children[2].data)[6]
-            width  = UNPACK_BOX_DATA(parablock.children[3].data)[6]
-            depth = UNPACK_BOX_DATA(parablock.children[4].data)[6]
-    height = -depth if (depth < 0) else depth
-    bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
-    obj = context.selected_objects[0]
-    if name is not None:
-        obj.name = name.data
-    if ('MATERIAL' in obtypes):
-        adjust_material(filename, search, obj, mat)
+        obj = bpy.data.objects.new(name.data, None)
+        context.view_layer.active_layer_collection.collection.objects.link(obj)
+        obj.empty_display_type = 'CUBE'
     adjust_matrix(obj, mtx)
     created.append(obj)
     return created
@@ -2025,16 +2029,17 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
     parablock = get_references(sphere)[0]
-    if len(parablock.children[1].data) > 15:
+    if len(parablock.children[1].data) > 11:
+        values = parablock.children[1]
+        rd = get_float(values.data, len(values.data)-4)[0]
+    else:
+        value = parablock.children[2].get_first(0x100)
+        if value is None:
+           value = parablock.children[3].get_first(0x100) 
         try:
-            rd = get_float(parablock.children[1].data, 15)[0]
+            rd = get_float(value.data)[0]
         except:
             rd = UNPACK_BOX_DATA(parablock.children[1].data)[6]
-    else:
-        try:
-            rd = get_float(parablock.children[2].get_first(0x100).data)[0]
-        except:
-            rd = UNPACK_BOX_DATA(parablock.children[2].data)[6]
     bpy.ops.mesh.primitive_uv_sphere_add(radius=rd)
     obj = context.selected_objects[0]
     if name is not None:
@@ -2050,14 +2055,18 @@ def create_torus(context, settings, node, torus, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(torus)
-    try:
-        values = parablock[0].children
+    parablock = get_references(torus)[0]
+    if len(parablock.children[1].data) > 11:
+        values = parablock.children
         rd1 = get_float(values[1].data, len(values[1].data)-4)[0]
         rd2 = get_float(values[2].data, len(values[2].data)-4)[0]
-    except:
-        rd1 = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
-        rd2 = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
+    else:
+        try:
+            rd1 = get_float(parablock.children[2].get_first(0x100).data)[0]
+            rd2 = get_float(parablock.children[3].get_first(0x100).data)[0]
+        except:
+            rd1 = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+            rd2 = UNPACK_BOX_DATA(parablock.children[2].data)[6]
     bpy.ops.mesh.primitive_torus_add(major_radius=rd1, minor_radius=rd2)
     obj = context.selected_objects[0]
     if name is not None:
@@ -2075,13 +2084,17 @@ def create_cylinder(context, settings, node, cylinder, mat, mtx):
     filename, obtypes, search = settings
     parablock = get_references(cylinder)
     if parablock:
-        try:
-            values = parablock[0].children
+        values = parablock[0].children
+        if len(values[1].data) > 11:
             rd = get_float(values[1].data, len(values[1].data)-4)[0]
             hg = get_float(values[2].data, len(values[2].data)-4)[0]
-        except:
-            rd = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
-            hg = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
+        else:
+            try:
+                rd = get_float(values[2].get_first(0x100).data)[0]
+                hg = get_float(values[3].get_first(0x100).data)[0]
+            except:
+                rd = UNPACK_BOX_DATA(values[1].data)[6]
+                hg = UNPACK_BOX_DATA(values[2].data)[6]
         rad = -rd if (rd < 0) else rd
         height = -hg if (hg < 0) else hg
         bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=height)
@@ -2102,16 +2115,21 @@ def create_cone(context, settings, node, cone, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(cone)
-    try:
-        values = parablock[0].children
+    parablock = get_references(cone)[0]
+    if len(parablock.children[1].data) > 11:
+        values = parablock.children
         rd1 = get_float(values[1].data, len(values[1].data)-4)[0]
         rd2 = get_float(values[2].data, len(values[2].data)-4)[0]
         hgt = get_float(values[3].data, len(values[3].data)-4)[0]
-    except:
-        rd1 = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
-        rd2 = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
-        hgt = UNPACK_BOX_DATA(parablock[0].children[3].data)[6]
+    else:
+        try:
+            rd1 = get_float(parablock.children[2].get_first(0x100).data)[0]
+            rd2 = get_float(parablock.children[3].get_first(0x100).data)[0]
+            hgt = get_float(parablock.children[4].get_first(0x100).data)[0] 
+        except:
+            rd1 = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+            rd2 = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+            hgt = UNPACK_BOX_DATA(parablock.children[3].data)[6]
     height = -hgt if (hgt < 0) else hgt
     bpy.ops.mesh.primitive_cone_add(radius1=rd1, radius2=rd2, depth=height)
     obj = context.selected_objects[0]
@@ -2141,7 +2159,7 @@ def create_mesh(context, settings, node, msh, mat, mtx):
             created = create_editable_poly(context, settings, node, msh, mat)
         elif msh.get_first(0x08FE) and (uid in {0x10, 0x11, 0x12, 0x16, 0x19, EDIT_MESH}):
             created = create_editable_mesh(context, settings, node, msh, mat)
-        elif (uid == 0x010 and 'PRIMITIVE' in settings[1]):
+        elif (uid in {0x10, 0x14, 0x19} and 'PRIMITIVE' in settings[1]):
             created = create_box(context, settings, node, msh, mat, mtx)
         elif (uid == 0x011 and 'PRIMITIVE' in settings[1]):
             created = create_sphere(context, settings, node, msh, mat, mtx)
