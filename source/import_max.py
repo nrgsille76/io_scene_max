@@ -1988,16 +1988,26 @@ def create_box(context, settings, node, box, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(box)
-    try:
-        values = parablock[0].children
-        length = get_float(values[1].data, len(values[1].data)-4)[0]
-        width = get_float(values[2].data, len(values[2].data)-4)[0]
-        depth = get_float(values[3].data, len(values[3].data)-4)[0]
-    except:
-        length = UNPACK_BOX_DATA(parablock[0].children[1].data)[6]
-        width  = UNPACK_BOX_DATA(parablock[0].children[2].data)[6]
-        depth = UNPACK_BOX_DATA(parablock[0].children[3].data)[6]
+    parablock = get_references(box)[0]
+    if len(parablock.children[1].data) > 5:
+        try:
+            values = parablock.children
+            length = get_float(values[1].data, len(values[1].data)-4)[0]
+            width = get_float(values[2].data, len(values[2].data)-4)[0]
+            depth = get_float(values[3].data, len(values[3].data)-4)[0]
+        except:
+            length = UNPACK_BOX_DATA(parablock.children[1].data)[6]
+            width  = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+            depth = UNPACK_BOX_DATA(parablock.children[3].data)[6]
+    else:
+        try:
+            length = get_float(parablock.children[2].get_first(0x100).data)[0]
+            width = get_float(parablock.children[3].get_first(0x100).data)[0]
+            depth = get_float(parablock.children[4].get_first(0x100).data)[0]
+        except:
+            length = UNPACK_BOX_DATA(parablock.children[2].data)[6]
+            width  = UNPACK_BOX_DATA(parablock.children[3].data)[6]
+            depth = UNPACK_BOX_DATA(parablock.children[4].data)[6]
     height = -depth if (depth < 0) else depth
     bpy.ops.mesh.primitive_cube_add(size=1.0, scale=(width, length, height))
     obj = context.selected_objects[0]
@@ -2015,7 +2025,7 @@ def create_sphere(context, settings, node, sphere, mat, mtx):
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
     parablock = get_references(sphere)[0]
-    if len(parablock.children[1].data) > 18:
+    if len(parablock.children[1].data) > 15:
         try:
             rd = get_float(parablock.children[1].data, 15)[0]
         except:
@@ -2040,7 +2050,7 @@ def create_torus(context, settings, node, torus, mat, mtx):
     created = []
     name = node.get_first(0x0962)
     filename, obtypes, search = settings
-    parablock = get_references(torus)[0]
+    parablock = get_references(torus)
     try:
         values = parablock[0].children
         rd1 = get_float(values[1].data, len(values[1].data)-4)[0]
