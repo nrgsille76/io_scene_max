@@ -1060,12 +1060,13 @@ def get_mesh_polys(data):
 
 
 def get_face_chunks(chunk):
-    faceflags = get_long(chunk.data, 0)
-    for cnk in chunk.children:
-        if (cnk.types == 0x0110):
-            size, step = get_long(cnk.data, 0)
-            face, step = get_longs(cnk.data, step, size)
-    return face
+    faceflags = get_long(chunk.data)
+    facechunk = chunk.get_first(0x0110)
+    matlchunk = chunk.get_first(0x0130)
+    size, step = get_long(facechunk.data)
+    face, step = get_longs(facechunk.data, step, size)
+    matid = get_short(matlchunk.data)[0] if matlchunk else 0
+    return face, matid
 
 
 def get_poly_data(chunk):
@@ -1908,10 +1909,12 @@ def create_editable_poly(context, settings, node, msh, mat):
                 mesh.polys = get_poly_loops(child)
             elif (child.types == 0x010A):
                 mesh.tris = get_tri_data(child)
-            elif (child.types == 0x0118):
-                mesh.faces.append(get_face_chunks(child))
             elif (child.types == 0x011A):
                 mesh.points = calc_point_3d(child)
+            elif (child.types == 0x0118):
+                face, matid = get_face_chunks(child) 
+                mesh.faces.append(face)
+                mesh.mats.append(matid)
             elif (child.types == 0x0124):
                 mesh.maps.append(get_long(child.data, 0)[0])
             elif (child.types == 0x0128):
