@@ -1141,10 +1141,11 @@ def get_bitmap(chunk):
             else:
                 references = get_references(parameters[1])
                 for reference in references:
-                    for ref in reference.children:
-                        imglink = ref.get_first(0x1260)
-                        if imglink and imglink.children:
-                            matlib = imglink.children[0]
+                    if reference is not None:
+                        for ref in reference.children:
+                            imglink = ref.get_first(0x1260)
+                            if imglink and imglink.children:
+                                matlib = imglink.children[0]
                 if matlib is None:
                     for block in parameters[1].children:
                         if (block.children and get_guid(block) == 0x3333):
