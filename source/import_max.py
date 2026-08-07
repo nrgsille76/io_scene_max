@@ -22,6 +22,7 @@ import math
 import zlib
 import array
 import struct
+import hashlib
 import mathutils
 from pathlib import Path
 from bpy_extras.image_utils import load_image
@@ -109,6 +110,37 @@ SCENE_LIST = []
 object_list = []
 parent_dict = {}
 matrix_dict = {}
+mesh_cache = {}
+
+
+def get_mesh_cache_key(verts, faces, float_precision=6):
+
+    hasher = hashlib.sha256()
+
+    flat_verts = []
+    for v in verts:
+        if hasattr(v, '__iter__'):
+            flat_verts.extend(float(c) for c in v)
+        else:
+            flat_verts.append(float(v))
+
+    if not flat_verts:
+        raise ValueError("verts is empty")
+
+    flat_verts = [round(c, float_precision) for c in flat_verts]
+
+    hasher.update(struct.pack(f"{len(flat_verts)}d", *flat_verts))
+
+    hasher.update(b"||faces||")
+    for face in faces:
+        indices = list(face)
+        if indices:
+            min_pos = indices.index(min(indices))
+            indices = indices[min_pos:] + indices[:min_pos]
+        hasher.update(struct.pack(f"{len(indices)}I", *indices))
+        hasher.update(b"|")  # face separator
+
+    return hasher.hexdigest()
 
 
 def get_valid_name(name):
@@ -1587,7 +1619,7 @@ def get_arch_material(ad):
     return material
 
 
-def adjust_material(filename, search, obj, mat):
+def adjust_material(filename, search, mesh, mat):
     material = mtl_id = mtl_name = None
     dirname = os.path.dirname(filename)
     if (mat is not None):
@@ -1636,11 +1668,11 @@ def adjust_material(filename, search, obj, mat):
             layers = get_reference(refs[0])
             mtl_id = mat.get_first(0x0FA0)
             for layer in layers.values():
-                material = adjust_material(filename, search, obj, layer)
+                material = adjust_material(filename, search, mesh, layer)
         elif (uid in {SHEL_MTL, VTWO_MTL}):  # VRay2SidedMtl
             sides = get_references(mat)
             for side in sides:
-                material = adjust_material(filename, search, obj, side)
+                material = adjust_material(filename, search, mesh, side)
         elif (uid == ARCH_MTL):  # Arch
             mtl_name = get_material_name(mat)
             refs = get_references(mat)
@@ -1652,8 +1684,8 @@ def adjust_material(filename, search, obj, mat):
                 refs = list(rf.values())
             for ref in refs:
                 if (ref is not None):
-                    material = adjust_material(filename, search, obj, ref)
-        if (obj is not None) and (material is not None):
+                    material = adjust_material(filename, search, mesh, ref)
+        if (mesh is not None) and (material is not None):
             if mtl_name is None:
                 matname = mtl_id.children[0].data if mtl_id else get_cls_name(mat)
             else:
@@ -1666,7 +1698,7 @@ def adjust_material(filename, search, obj, mat):
             objMaterial = bpy.data.materials.get(matname)
             if objMaterial is None:
                 objMaterial = bpy.data.materials.new(matname)
-            obj.data.materials.append(objMaterial)
+            mesh.materials.append(objMaterial)
             shader = PrincipledBSDFWrapper(objMaterial, is_readonly=False)
             shader.base_color = objMaterial.diffuse_color[:3] = material.get('diffuse', (0.8, 0.8, 0.8))
             shader.specular_tint = objMaterial.specular_color[:3] = material.get('specular', (1, 1, 1))
@@ -1826,6 +1858,11 @@ def adjust_matrix(obj, node):
 
 
 def draw_shape(name, mesh, faces):
+    cache_key = get_mesh_cache_key(mesh.verts, faces)
+
+    if cache_key in mesh_cache:
+        return mesh_cache[cache_key], cache_key
+
     data = []
     loopstart = []
     looplines = loop = 0
@@ -1844,7 +1881,7 @@ def draw_shape(name, mesh, faces):
         loop += len(vtx)
     shape.polygons.foreach_set("loop_start", loopstart)
     shape.loops.foreach_set("vertex_index", data)
-    return shape
+    return shape, cache_key
 
 
 def draw_map(shape, uvmap, uvcoords, uvwids):
@@ -1861,28 +1898,33 @@ def draw_map(shape, uvmap, uvcoords, uvwids):
             print('\tArrayLengthMismatchError: %s' % exc)
     return shape
 
-
 def create_shape(context, settings, node, mesh, mat):
     meshname = ""
     filename, obtypes, search = settings
     name = node.get_first(0x0962)
     if name is not None:
         meshname = name.data
-    meshobject = draw_shape(meshname, mesh, mesh.faces)
-    if ('UV' in obtypes and mesh.maps):
-        for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
-            meshobject = draw_map(meshobject, idx, mesh.cords[idx], mesh.uvids[idx])
-    meshobject.validate()
-    meshobject.update()
+    meshobject, cache_key = draw_shape(meshname, mesh, mesh.faces)
+    if cache_key not in mesh_cache.keys():
+        if ('UV' in obtypes and mesh.maps):
+            for idx, uvm in enumerate(mesh.maps[:len(mesh.cords)]):
+                meshobject = draw_map(meshobject, idx, mesh.cords[idx], mesh.uvids[idx])
+
+        meshobject.validate()
+        meshobject.update()
+
+        if ('MATERIAL' in obtypes):
+            adjust_material(filename, search, meshobject, mat)
+            if (len(mesh.mats) > 0):
+                try:
+                    meshobject.polygons.foreach_set("material_index", mesh.mats)
+                except Exception as exc:
+                    print('\tArrayLengthMismatchError: %s' % exc)
+
+        mesh_cache[cache_key] = meshobject
+
     obj = bpy.data.objects.new(meshname, meshobject)
     context.view_layer.active_layer_collection.collection.objects.link(obj)
-    if ('MATERIAL' in obtypes):
-        adjust_material(filename, search, obj, mat)
-        if (len(mesh.mats) > 0):
-            try:
-                obj.data.polygons.foreach_set("material_index", mesh.mats)
-            except Exception as exc:
-                print('\tArrayLengthMismatchError: %s' % exc)
     object_list.append(obj)
     return object_list
 
@@ -2210,7 +2252,7 @@ def create_object(context, settings, node, transform):
             angle = mathutils.Quaternion((quats[3], quats[2], quats[1], quats[0]))
             scale = mathutils.Vector(nodesize.data[:3] if nodesize else (1.0, 1.0, 1.0))
             p_mtx = mathutils.Matrix.LocRotScale(pivot, angle, scale)
-            obj.data.transform(p_mtx)
+            obj.matrix_world = p_mtx
     matrix_dict[nodename] = create_matrix(prs)
     parent_dict[nodename] = parentname
     return nodename, created
@@ -2277,6 +2319,7 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
 
     parent_dict.clear()
     matrix_dict.clear()
+    mesh_cache.clear()
 
     context.window.cursor_set('WAIT')
     mscale = mathutils.Matrix.Scale(scale_objects, 4)
@@ -2301,6 +2344,7 @@ def load(operator, context, files=[], directory="", filepath="", scale_objects=1
 
     parent_dict.clear()
     matrix_dict.clear()
+    mesh_cache.clear()
 
     active = context.view_layer.layer_collection.children.get(default_layer.name)
     if active is not None:
