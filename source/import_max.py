@@ -871,7 +871,8 @@ def get_metadata(index):
                     return uid[0][1]
         else:
             return pathname[0][1]
-    return pathdata
+    # Not found: None, not the whole table (Path(dict) dropped all of a material's maps).
+    return None
 
 
 def get_guid(chunk):
@@ -1341,11 +1342,20 @@ def get_physical_material(phys):
         colors = phys[0]
         material = Material()
         textures = get_reference(colors)
-        bitmap = get_bitmap(textures.get(1))
-        glossmap = get_bitmap(textures.get(2))
-        shinmap = get_bitmap(textures.get(4))
-        normalmap = get_bitmap(textures.get(21))
-        transmap = get_bitmap(textures.get(24))
+
+        def slot_map(key):
+            # Each map on its own, so one unreadable map doesn't drop the others.
+            try:
+                path = get_bitmap(textures.get(key))
+                return path if isinstance(path, str) and path else None
+            except Exception as exc:
+                print("\t'PhysicalMtl' map %d Error:" % key, exc)
+                return None
+        bitmap = slot_map(1)
+        glossmap = slot_map(2)
+        shinmap = slot_map(4)
+        normalmap = slot_map(21)
+        transmap = slot_map(24)
         material.set('diffuse', get_rgb(colors, 0x02))
         material.set('metallic', get_value(colors, 0x05))
         material.set('shinines', 1.0 - get_value(colors, 0x03))
@@ -1353,16 +1363,18 @@ def get_physical_material(phys):
         material.set('opacity', 1.0 - get_value(colors, 0x06))
         material.set('specular', get_rgb(colors, 0x0A))
         material.set('emissive', get_rgb(colors, 0x1F))
+        # The full path, so the map loads from where Max had it; load_image still
+        # looks next to the .max file when it isn't there.
         if (bitmap is not None):
-            material.set('bitmap', Path(bitmap).name)
+            material.set('bitmap', bitmap)
         if (glossmap is not None):
-            material.set('glossmap', Path(glossmap).name)
+            material.set('glossmap', glossmap)
         if (shinmap is not None):
-            material.set('shinmap', Path(shinmap).name)
+            material.set('shinmap', shinmap)
         if (transmap is not None):
-            material.set('transmap', Path(transmap).name)
+            material.set('transmap', transmap)
         if (normalmap is not None):
-            material.set('normalmap', Path(normalmap).name)
+            material.set('normalmap', normalmap)
     except Exception as exc:
         print("\t'PhysicalMtl' Error:", exc)
     return material
@@ -2248,11 +2260,20 @@ def make_scene(context, settings, mscale, transform, parent):
                 obj.matrix_world = mscale @ obj.matrix_world
 
 
+def read_meta_data(maxfile):
+    """The asset paths (FileAssetMetaData), found by name: with the Summary Information streams
+    present it is not the 11th entry."""
+    for entry in maxfile.direntries:
+        if entry is not None and entry.name.startswith('FileAssetMetaData'):
+            return read_chunks(maxfile, entry.name, superId=0xB)
+    metasid = min(max(entry.sid for entry in maxfile.direntries if entry is not None), 11)
+    return read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
+
+
 def read_scene(context, maxfile, settings, mscale, transform):
     global SCENE_LIST, META_DATA
-    metasid = min(max(entry.sid for entry in maxfile.direntries if entry is not None), 11)
     SCENE_LIST = read_chunks(maxfile, 'Scene', SceneChunk)
-    META_DATA = read_chunks(maxfile, maxfile.direntries[metasid].name, superId=metasid) if metasid >= 0xA else []
+    META_DATA = read_meta_data(maxfile)
     make_scene(context, settings, mscale, transform, SCENE_LIST[0])
     # For debug: Print directory
     # print('Directory', maxfile.direntries[0].kids_dict.keys())
